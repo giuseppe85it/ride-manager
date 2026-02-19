@@ -1,5 +1,32 @@
 # CHANGELOG
 
+## 2026-02-19 22:23:28 - aggiornamento
+- Commit: e310e076131254cccdbe48ba2a2ea66e4f6f480d
+- Report: docs/ops-log/2026-02-19_22-23.md
+- Files changed:
+  - CHANGELOG.md
+  - STATE_NOW.md
+  - docs/ops-log/2026-02-19_19-09.md
+  - ops.log
+  - src/App.tsx
+  - src/components/DayMap.tsx
+  - src/models/GPXFile.ts
+  - src/models/Giorno.ts
+  - src/models/TrackPoint.ts
+  - src/models/Viaggio.ts
+  - src/pages/DettaglioViaggio.tsx
+  - src/pages/Giorni.tsx
+  - src/pages/GiornoDettaglio.tsx
+  - src/pages/Home.css
+  - src/pages/Home.tsx
+  - src/pages/TestImportGPX.tsx
+  - src/pages/Viaggi.tsx
+  - src/services/geocodeService.ts
+  - src/services/gpxService.ts
+  - src/services/storage.ts
+  - src/styles/layout.css
+  - src/styles/theme.css
+  - src/utils/geo.ts
 ## 2026-02-19 19:09:48 - test tracking
 - Commit: 2841579406593e5ca25bcfe24e8527fc143e50c0
 - Report: docs/ops-log/2026-02-19_19-09.md

@@ -1,36 +1,30 @@
 # STATE NOW
 
-- Last update: 2026-02-19 19:09:48
-- Last commit: 2841579406593e5ca25bcfe24e8527fc143e50c0
-- Last message: test tracking
-- Last report: docs/ops-log/2026-02-19_19-09.md
+- Last update: 2026-02-19 22:23:28
+- Last commit: e310e076131254cccdbe48ba2a2ea66e4f6f480d
+- Last message: aggiornamento
+- Last report: docs/ops-log/2026-02-19_22-23.md
 - Last changed files:
-  - .gitignore
   - CHANGELOG.md
-  - README.md
   - STATE_NOW.md
-  - docs/ops-log/2026-02-19_19-04.md
-  - docs/ops-log/2026-02-19_19-05.md
-  - eslint.config.js
-  - index.html
+  - docs/ops-log/2026-02-19_19-09.md
   - ops.log
-  - package-lock.json
-  - package.json
-  - public/vite.svg
-  - src/App.css
   - src/App.tsx
-  - src/assets/react.svg
-  - src/index.css
-  - src/main.tsx
+  - src/components/DayMap.tsx
   - src/models/GPXFile.ts
   - src/models/Giorno.ts
+  - src/models/TrackPoint.ts
   - src/models/Viaggio.ts
-  - src/navigation/providers/organicMaps.ts
-  - src/navigation/providers/providerBase.ts
+  - src/pages/DettaglioViaggio.tsx
+  - src/pages/Giorni.tsx
+  - src/pages/GiornoDettaglio.tsx
+  - src/pages/Home.css
+  - src/pages/Home.tsx
+  - src/pages/TestImportGPX.tsx
+  - src/pages/Viaggi.tsx
+  - src/services/geocodeService.ts
   - src/services/gpxService.ts
-  - src/services/navigationService.ts
   - src/services/storage.ts
-  - tsconfig.app.json
-  - tsconfig.json
-  - tsconfig.node.json
-  - vite.config.ts
+  - src/styles/layout.css
+  - src/styles/theme.css
+  - src/utils/geo.ts
