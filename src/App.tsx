@@ -1,35 +1,60 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
+import { useState } from "react";
+import "leaflet/dist/leaflet.css";
+import "./styles/layout.css";
+import DettaglioViaggio from "./pages/DettaglioViaggio";
+import GiornoDettaglio from "./pages/GiornoDettaglio";
+import Home from "./pages/Home";
+import Viaggi from "./pages/Viaggi";
+
+type AppView =
+  | { page: "home" }
+  | { page: "viaggi" }
+  | { page: "dettaglioViaggio"; viaggioId: string }
+  | { page: "giornoDettaglio"; viaggioId: string; giornoId: string };
 
 function App() {
-  const [count, setCount] = useState(0)
+  const [view, setView] = useState<AppView>({ page: "home" });
+
+  if (view.page === "home") {
+    return <Home onOpenViaggi={() => setView({ page: "viaggi" })} />;
+  }
+
+  if (view.page === "viaggi") {
+    return (
+      <Viaggi
+        onBackHome={() => setView({ page: "home" })}
+        onOpenViaggio={(viaggioId) => setView({ page: "dettaglioViaggio", viaggioId })}
+      />
+    );
+  }
+
+  if (view.page === "dettaglioViaggio") {
+    return (
+      <DettaglioViaggio
+        viaggioId={view.viaggioId}
+        onBack={() => setView({ page: "viaggi" })}
+        onOpenGiorno={(giornoId) =>
+          setView({
+            page: "giornoDettaglio",
+            viaggioId: view.viaggioId,
+            giornoId,
+          })
+        }
+      />
+    );
+  }
 
   return (
-    <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.tsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
-  )
+    <GiornoDettaglio
+      giornoId={view.giornoId}
+      onBack={() =>
+        setView({
+          page: "dettaglioViaggio",
+          viaggioId: view.viaggioId,
+        })
+      }
+    />
+  );
 }
 
-export default App
+export default App;

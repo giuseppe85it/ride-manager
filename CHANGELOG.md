@@ -1,5 +1,38 @@
 # CHANGELOG
 
+## 2026-02-19 19:09:48 - test tracking
+- Commit: 2841579406593e5ca25bcfe24e8527fc143e50c0
+- Report: docs/ops-log/2026-02-19_19-09.md
+- Files changed:
+  - .gitignore
+  - CHANGELOG.md
+  - README.md
+  - STATE_NOW.md
+  - docs/ops-log/2026-02-19_19-04.md
+  - docs/ops-log/2026-02-19_19-05.md
+  - eslint.config.js
+  - index.html
+  - ops.log
+  - package-lock.json
+  - package.json
+  - public/vite.svg
+  - src/App.css
+  - src/App.tsx
+  - src/assets/react.svg
+  - src/index.css
+  - src/main.tsx
+  - src/models/GPXFile.ts
+  - src/models/Giorno.ts
+  - src/models/Viaggio.ts
+  - src/navigation/providers/organicMaps.ts
+  - src/navigation/providers/providerBase.ts
+  - src/services/gpxService.ts
+  - src/services/navigationService.ts
+  - src/services/storage.ts
+  - tsconfig.app.json
+  - tsconfig.json
+  - tsconfig.node.json
+  - vite.config.ts
 ## 2026-02-19 19:05:20 - test: verify ops hook
 - Commit: ff6c001faecc119c4152708a43ecd56228441cc8
 - Report: docs/ops-log/2026-02-19_19-05.md

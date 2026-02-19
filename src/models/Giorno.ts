@@ -1,7 +1,9 @@
-﻿export interface Giorno {
+export interface Giorno {
   id: string;
-  dataISO: string;
+  viaggioId: string;
+  data: string;
   titolo: string;
-  viaggioIds: string[];
+  stato: "PIANIFICATO" | "IN_CORSO" | "FATTO";
   note?: string;
+  createdAt: string;
 }

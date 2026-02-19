@@ -1,15 +1,11 @@
-﻿export type Coordinate = {
-  lat: number;
-  lng: number;
-};
-
 export interface Viaggio {
   id: string;
-  giornoId: string;
   nome: string;
-  partenza: Coordinate;
-  arrivo: Coordinate;
-  waypoints: Coordinate[];
-  distanzaKm?: number;
-  durataMin?: number;
+  dataInizio: string;
+  dataFine: string;
+  area: string;
+  valuta: "EUR";
+  stato: "PIANIFICAZIONE" | "ATTIVO" | "CONCLUSO" | "ARCHIVIATO";
+  note?: string;
+  createdAt: string;
 }

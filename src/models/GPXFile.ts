@@ -1,16 +1,13 @@
-﻿export interface GPXPoint {
-  lat: number;
-  lon: number;
-  ele?: number;
-  time?: string;
-}
-
-export interface GPXTrack {
-  name?: string;
-  points: GPXPoint[];
-}
-
 export interface GPXFile {
+  id: string;
+  giornoId: string;
+  kind: "planned" | "actual";
   name: string;
-  tracks: GPXTrack[];
+  uri: string;
+  source: "bmw";
+  startTime: string;
+  endTime: string;
+  durationMin: number;
+  pointsCount: number;
+  createdAt: string;
 }
