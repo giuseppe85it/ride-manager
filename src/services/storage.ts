@@ -1,15 +1,17 @@
 import type { Giorno } from "../models/Giorno";
 import type { GPXFile } from "../models/GPXFile";
+import type { Prenotazione, PrenotazioneStato, PrenotazioneTipo } from "../models/Prenotazione";
 import type { TrackPoint } from "../models/TrackPoint";
 import type { Viaggio } from "../models/Viaggio";
 
 const DB_NAME = "RideManagerDB";
-const DB_VERSION = 4;
+const DB_VERSION = 5;
 
 const STORE_VIAGGI = "viaggi";
 const STORE_GIORNI = "giorni";
 const STORE_GPX_FILES = "gpxFiles";
 const STORE_TRACK_POINTS = "trackPoints";
+const STORE_PRENOTAZIONI = "prenotazioni";
 const DEFAULT_VIAGGIO_STATO: Viaggio["stato"] = "PIANIFICAZIONE";
 const DEFAULT_GIORNO_STATO: Giorno["stato"] = "PIANIFICATO";
 const VIAGGIO_STATI: Viaggio["stato"][] = [
@@ -24,10 +26,17 @@ type StoreName =
   | typeof STORE_VIAGGI
   | typeof STORE_GIORNI
   | typeof STORE_GPX_FILES
-  | typeof STORE_TRACK_POINTS;
+  | typeof STORE_TRACK_POINTS
+  | typeof STORE_PRENOTAZIONI;
 
 type LegacyViaggioRecord = Partial<Viaggio> & { id: string; titolo?: string };
 type LegacyGiornoRecord = Partial<Giorno> & { id: string; viaggioId?: string };
+type LegacyPrenotazioneRecord = Partial<Prenotazione> & {
+  id: string;
+  viaggioId?: string;
+  tipo?: string;
+  stato?: string;
+};
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
@@ -41,6 +50,43 @@ function isViaggioStato(value: unknown): value is Viaggio["stato"] {
 
 function isGiornoStato(value: unknown): value is Giorno["stato"] {
   return typeof value === "string" && GIORNO_STATI.includes(value as Giorno["stato"]);
+}
+
+function isPrenotazioneTipo(value: unknown): value is PrenotazioneTipo {
+  return value === "HOTEL" || value === "TRAGHETTO";
+}
+
+function isPrenotazioneStato(value: unknown): value is PrenotazioneStato {
+  return value === "OPZIONE" || value === "CONFERMATA" || value === "CANCELLATA";
+}
+
+function toValidIso(value: unknown): string | null {
+  if (typeof value !== "string" || !value.trim()) {
+    return null;
+  }
+
+  const parsed = Date.parse(value);
+  if (Number.isNaN(parsed)) {
+    return null;
+  }
+
+  return new Date(parsed).toISOString();
+}
+
+function toOptionalString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value : undefined;
+}
+
+function toOptionalNumber(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  return undefined;
+}
+
+function toOptionalBoolean(value: unknown): boolean | undefined {
+  return typeof value === "boolean" ? value : undefined;
 }
 
 function normalizeViaggio(record: LegacyViaggioRecord): Viaggio {
@@ -83,6 +129,64 @@ function normalizeGiorno(record: LegacyGiornoRecord): Giorno {
       typeof record.createdAt === "string" && record.createdAt
         ? record.createdAt
         : new Date().toISOString(),
+  };
+}
+
+function normalizePrenotazione(record: LegacyPrenotazioneRecord): Prenotazione | null {
+  if (!isPrenotazioneTipo(record.tipo)) {
+    console.warn("Prenotazione scartata: tipo non valido", record);
+    return null;
+  }
+
+  const nowIso = new Date().toISOString();
+  const dataInizio = toValidIso(record.dataInizio);
+  if (!dataInizio) {
+    console.warn("Prenotazione scartata: dataInizio non valida", record);
+    return null;
+  }
+
+  return {
+    id: record.id,
+    viaggioId: typeof record.viaggioId === "string" ? record.viaggioId : "",
+    giornoId: toOptionalString(record.giornoId),
+    tipo: record.tipo,
+    stato: isPrenotazioneStato(record.stato) ? record.stato : "OPZIONE",
+    titolo: typeof record.titolo === "string" ? record.titolo : "",
+    fornitore: toOptionalString(record.fornitore),
+    localita: toOptionalString(record.localita),
+    dataInizio,
+    dataFine: toValidIso(record.dataFine),
+    oraInizio: toOptionalString(record.oraInizio),
+    oraFine: toOptionalString(record.oraFine),
+    indirizzo: toOptionalString(record.indirizzo),
+    checkIn: toOptionalString(record.checkIn),
+    checkOut: toOptionalString(record.checkOut),
+    ospiti: toOptionalNumber(record.ospiti),
+    camere: toOptionalNumber(record.camere),
+    parcheggioMoto: toOptionalBoolean(record.parcheggioMoto),
+    colazioneInclusa: toOptionalBoolean(record.colazioneInclusa),
+    portoPartenza: toOptionalString(record.portoPartenza),
+    portoArrivo: toOptionalString(record.portoArrivo),
+    compagnia: toOptionalString(record.compagnia),
+    nave: toOptionalString(record.nave),
+    cabina: toOptionalString(record.cabina),
+    veicolo:
+      record.veicolo === "MOTO" || record.veicolo === "AUTO" || record.veicolo === "ALTRO"
+        ? record.veicolo
+        : undefined,
+    targaVeicolo: toOptionalString(record.targaVeicolo),
+    passeggeri: toOptionalNumber(record.passeggeri),
+    numeroPrenotazione: toOptionalString(record.numeroPrenotazione),
+    url: toOptionalString(record.url),
+    email: toOptionalString(record.email),
+    telefono: toOptionalString(record.telefono),
+    valuta: "EUR",
+    costoTotale: toOptionalNumber(record.costoTotale),
+    caparra: toOptionalNumber(record.caparra),
+    pagato: toOptionalBoolean(record.pagato),
+    note: toOptionalString(record.note),
+    createdAt: toValidIso(record.createdAt) ?? nowIso,
+    updatedAt: toValidIso(record.updatedAt) ?? nowIso,
   };
 }
 
@@ -142,11 +246,13 @@ export function initDB(): Promise<IDBDatabase> {
         db.createObjectStore(STORE_GPX_FILES, { keyPath: "id" });
       }
 
-      if (db.objectStoreNames.contains(STORE_TRACK_POINTS)) {
-        db.deleteObjectStore(STORE_TRACK_POINTS);
+      if (!db.objectStoreNames.contains(STORE_TRACK_POINTS)) {
+        db.createObjectStore(STORE_TRACK_POINTS, { keyPath: "id", autoIncrement: true });
       }
 
-      db.createObjectStore(STORE_TRACK_POINTS, { keyPath: "id", autoIncrement: true });
+      if (!db.objectStoreNames.contains(STORE_PRENOTAZIONI)) {
+        db.createObjectStore(STORE_PRENOTAZIONI, { keyPath: "id" });
+      }
     };
 
     request.onsuccess = () => {
@@ -283,5 +389,70 @@ export async function deleteGiorno(giornoId: string): Promise<void> {
   const db = await initDB();
   const transaction = db.transaction(STORE_GIORNI, "readwrite");
   transaction.objectStore(STORE_GIORNI).delete(giornoId);
+  await transactionToPromise(transaction);
+}
+
+export async function savePrenotazione(prenotazione: Prenotazione): Promise<void> {
+  const normalized = normalizePrenotazione(prenotazione);
+  if (!normalized) {
+    throw new Error("Prenotazione non valida");
+  }
+  await putRecord(STORE_PRENOTAZIONI, normalized);
+}
+
+export async function getPrenotazioniByViaggio(viaggioId: string): Promise<Prenotazione[]> {
+  const allRecords = await getAllRecords<LegacyPrenotazioneRecord>(STORE_PRENOTAZIONI);
+  return allRecords
+    .map((record) => normalizePrenotazione(record))
+    .filter((record): record is Prenotazione => record !== null)
+    .filter((record) => record.viaggioId === viaggioId);
+}
+
+export async function getPrenotazioniByGiorno(giornoId: string): Promise<Prenotazione[]> {
+  const allRecords = await getAllRecords<LegacyPrenotazioneRecord>(STORE_PRENOTAZIONI);
+  return allRecords
+    .map((record) => normalizePrenotazione(record))
+    .filter((record): record is Prenotazione => record !== null)
+    .filter((record) => record.giornoId === giornoId);
+}
+
+export async function getPrenotazione(id: string): Promise<Prenotazione | undefined> {
+  const db = await initDB();
+  const transaction = db.transaction(STORE_PRENOTAZIONI, "readonly");
+  const request = transaction.objectStore(STORE_PRENOTAZIONI).get(id);
+  const rawRecord = await requestToPromise(request);
+  await transactionToPromise(transaction);
+
+  if (!rawRecord) {
+    return undefined;
+  }
+
+  return normalizePrenotazione(rawRecord as LegacyPrenotazioneRecord) ?? undefined;
+}
+
+export async function deletePrenotazione(id: string): Promise<void> {
+  const db = await initDB();
+  const transaction = db.transaction(STORE_PRENOTAZIONI, "readwrite");
+  transaction.objectStore(STORE_PRENOTAZIONI).delete(id);
+  await transactionToPromise(transaction);
+}
+
+export async function deleteViaggioCascade(viaggioId: string): Promise<void> {
+  const giorni = await getGiorniByViaggio(viaggioId);
+
+  for (const giorno of giorni) {
+    await deleteTrackPointsByGiornoId(giorno.id);
+    await deleteGpxFilesByGiornoId(giorno.id);
+    await deleteGiorno(giorno.id);
+  }
+
+  const prenotazioni = await getPrenotazioniByViaggio(viaggioId);
+  for (const prenotazione of prenotazioni) {
+    await deletePrenotazione(prenotazione.id);
+  }
+
+  const db = await initDB();
+  const transaction = db.transaction(STORE_VIAGGI, "readwrite");
+  transaction.objectStore(STORE_VIAGGI).delete(viaggioId);
   await transactionToPromise(transaction);
 }

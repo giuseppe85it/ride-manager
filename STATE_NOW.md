@@ -1,30 +1,11 @@
 # STATE NOW
 
-- Last update: 2026-02-19 22:23:28
-- Last commit: e310e076131254cccdbe48ba2a2ea66e4f6f480d
-- Last message: aggiornamento
-- Last report: docs/ops-log/2026-02-19_22-23.md
+- Last update: 2026-02-19 22:23:32
+- Last commit: 41afad9d3ff2c4ee1cfacce81b56cae7cc6dd91f
+- Last message: AGGIORNAMENTO 1.0
+- Last report: docs/ops-log/2026-02-19_22-23_1.md
 - Last changed files:
   - CHANGELOG.md
   - STATE_NOW.md
-  - docs/ops-log/2026-02-19_19-09.md
+  - docs/ops-log/2026-02-19_22-23.md
   - ops.log
-  - src/App.tsx
-  - src/components/DayMap.tsx
-  - src/models/GPXFile.ts
-  - src/models/Giorno.ts
-  - src/models/TrackPoint.ts
-  - src/models/Viaggio.ts
-  - src/pages/DettaglioViaggio.tsx
-  - src/pages/Giorni.tsx
-  - src/pages/GiornoDettaglio.tsx
-  - src/pages/Home.css
-  - src/pages/Home.tsx
-  - src/pages/TestImportGPX.tsx
-  - src/pages/Viaggi.tsx
-  - src/services/geocodeService.ts
-  - src/services/gpxService.ts
-  - src/services/storage.ts
-  - src/styles/layout.css
-  - src/styles/theme.css
-  - src/utils/geo.ts

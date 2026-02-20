@@ -6,6 +6,7 @@ import DayMap from "../components/DayMap";
 import { reverseGeocode } from "../services/geocodeService";
 import { importGPXFile } from "../services/gpxService";
 import { calculateTrackDistanceKm } from "../utils/geo";
+import { splitTrackIntoSegments } from "../utils/trackSegmentation";
 import {
   deleteGPXFile,
   deleteTrackPointsByGpxFileId,
@@ -17,11 +18,6 @@ import "../styles/theme.css";
 interface GiornoDettaglioProps {
   giornoId: string;
   onBack: () => void;
-}
-
-interface MapPoint {
-  lat: number;
-  lon: number;
 }
 
 const dateFormatter = new Intl.DateTimeFormat("it-IT", {
@@ -45,60 +41,33 @@ function formatDateIT(iso: string | null): string {
   return dateFormatter.format(parsed);
 }
 
-function haversineDistanceMeters(from: MapPoint, to: MapPoint): number {
-  const earthRadiusMeters = 6371000;
-  const toRad = (value: number) => (value * Math.PI) / 180;
-  const lat1 = toRad(from.lat);
-  const lat2 = toRad(to.lat);
-  const deltaLat = toRad(to.lat - from.lat);
-  const deltaLon = toRad(to.lon - from.lon);
+function formatTimeIT(iso: string): string {
+  const parsed = new Date(iso);
+  if (Number.isNaN(parsed.getTime())) {
+    return "\u2014";
+  }
 
-  const a =
-    Math.sin(deltaLat / 2) * Math.sin(deltaLat / 2) +
-    Math.cos(lat1) * Math.cos(lat2) * Math.sin(deltaLon / 2) * Math.sin(deltaLon / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-
-  return earthRadiusMeters * c;
+  return new Intl.DateTimeFormat("it-IT", {
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(parsed);
 }
 
-function buildDaySegments(trackPoints: TrackPoint[]): MapPoint[][] {
-  const ordered = trackPoints
-    .map((trackPoint) => ({
-      timeMs: Date.parse(trackPoint.time),
-      point: { lat: trackPoint.lat, lon: trackPoint.lon },
-    }))
-    .filter((item) => !Number.isNaN(item.timeMs))
-    .sort((left, right) => left.timeMs - right.timeMs);
-
-  if (ordered.length === 0) {
-    return [];
+function formatGapDuration(durationSec: number): string {
+  const totalMinutes = Math.round(durationSec / 60);
+  if (totalMinutes < 1) {
+    return "< 1 min";
   }
-
-  const segments: MapPoint[][] = [];
-  let currentSegment: MapPoint[] = [ordered[0].point];
-
-  for (let index = 1; index < ordered.length; index += 1) {
-    const previous = ordered[index - 1];
-    const current = ordered[index];
-    const dtSec = (current.timeMs - previous.timeMs) / 1000;
-    const distM = haversineDistanceMeters(previous.point, current.point);
-
-    if (dtSec > 300 || distM > 1000) {
-      segments.push(currentSegment);
-      currentSegment = [current.point];
-      continue;
-    }
-
-    currentSegment.push(current.point);
+  if (totalMinutes === 1) {
+    return "1 min";
   }
-
-  segments.push(currentSegment);
-  return segments;
+  return `${totalMinutes} min`;
 }
 
 export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioProps) {
   const [gpxFiles, setGpxFiles] = useState<GPXFile[]>([]);
   const [trackPoints, setTrackPoints] = useState<TrackPoint[]>([]);
+  const [showAllGaps, setShowAllGaps] = useState(false);
   const [startLocation, setStartLocation] = useState<string>("N/D");
   const [endLocation, setEndLocation] = useState<string>("N/D");
   const [isResolvingLocations, setIsResolvingLocations] = useState(false);
@@ -202,8 +171,25 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
     [orderedTrackPoints]
   );
   const distanzaKmRounded = distanzaKm.toFixed(1);
+  const segmentation = useMemo(
+    () =>
+      splitTrackIntoSegments(
+        orderedTrackPoints.map((point) => ({
+          lat: point.lat,
+          lon: point.lon,
+          time: point.time,
+        })),
+        { gapTimeSec: 60 }
+      ),
+    [orderedTrackPoints]
+  );
+  const segments = segmentation.segments;
+  const gaps = segmentation.gaps;
+  const displayedGaps = showAllGaps ? gaps : gaps.slice(0, 3);
 
-  const segments = useMemo(() => buildDaySegments(trackPoints), [trackPoints]);
+  useEffect(() => {
+    setShowAllGaps(false);
+  }, [gaps.length]);
 
   useEffect(() => {
     let isActive = true;
@@ -306,6 +292,36 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
           <p className="metaText" style={{ margin: "0 0 0.5rem 0" }}>
             Luogo fine: {isResolvingLocations ? `${endLocation} (ricerca)` : endLocation}
           </p>
+
+          {gaps.length > 0 && (
+            <div className="card detailCard" style={{ padding: "0.75rem", marginBottom: "0.6rem" }}>
+              <p style={{ margin: "0 0 0.3rem 0", fontWeight: 700 }}>Traccia incompleta</p>
+              <p className="metaText" style={{ margin: "0 0 0.5rem 0" }}>
+                Rilevati gap GPS (nessun punto registrato).
+              </p>
+              <ul className="listPlain" style={{ marginBottom: gaps.length > 3 ? "0.45rem" : 0 }}>
+                {displayedGaps.map((gap, index) => (
+                  <li key={`${gap.fromTime}-${gap.toTime}-${index}`} className="metaText">
+                    Gap: {formatGapDuration(gap.durationSec)} (da {formatTimeIT(gap.fromTime)} a{" "}
+                    {formatTimeIT(gap.toTime)}){" "}
+                    {typeof gap.approxDistanceKm === "number"
+                      ? `- ~${gap.approxDistanceKm.toFixed(1)} km`
+                      : ""}
+                  </li>
+                ))}
+              </ul>
+              {gaps.length > 3 && (
+                <button
+                  type="button"
+                  className="buttonGhost"
+                  onClick={() => setShowAllGaps((current) => !current)}
+                >
+                  {showAllGaps ? "Mostra meno" : `Mostra tutti (${gaps.length})`}
+                </button>
+              )}
+            </div>
+          )}
+
           <DayMap segments={segments} />
         </div>
 
