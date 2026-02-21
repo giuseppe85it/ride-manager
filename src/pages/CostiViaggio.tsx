@@ -17,6 +17,8 @@ interface CostiViaggioProps {
 }
 
 type CategoriaFiltro = "ALL" | CostoCategoria;
+type CostoModalMode = "full" | "quick";
+type QuickPresetCategoria = "BENZINA" | "PEDAGGI";
 type BookingCostCategory = "HOTEL" | "TRAGHETTI";
 type BookingPagatoDa = "IO" | "LEI" | "DIVISO";
 
@@ -49,7 +51,7 @@ interface BookingQuoteResult {
   invalidSplit: boolean;
 }
 
-const CATEGORY_ORDER: CostoCategoria[] = ["BENZINA", "HOTEL", "TRAGHETTI", "EXTRA"];
+const CATEGORY_ORDER: CostoCategoria[] = ["BENZINA", "PEDAGGI", "HOTEL", "TRAGHETTI", "EXTRA"];
 
 function formatDate(value: string): string {
   const parsed = new Date(value);
@@ -73,6 +75,7 @@ function formatEuro(value: number): string {
 
 function categoriaLabel(categoria: CostoCategoria): string {
   if (categoria === "BENZINA") return "Benzina";
+  if (categoria === "PEDAGGI") return "Pedaggi";
   if (categoria === "HOTEL") return "Hotel";
   if (categoria === "TRAGHETTI") return "Traghetti";
   return "Extra";
@@ -211,6 +214,7 @@ function getBookingQuoteResult(booking: BookingCost): BookingQuoteResult {
 function buildEmptyTotals(): Record<CostoCategoria, CategoryTotals> {
   return {
     BENZINA: { confirmed: 0, unpaid: 0, total: 0 },
+    PEDAGGI: { confirmed: 0, unpaid: 0, total: 0 },
     HOTEL: { confirmed: 0, unpaid: 0, total: 0 },
     TRAGHETTI: { confirmed: 0, unpaid: 0, total: 0 },
     EXTRA: { confirmed: 0, unpaid: 0, total: 0 },
@@ -220,6 +224,7 @@ function buildEmptyTotals(): Record<CostoCategoria, CategoryTotals> {
 function buildEmptyCostListMap(): Record<CostoCategoria, Costo[]> {
   return {
     BENZINA: [],
+    PEDAGGI: [],
     HOTEL: [],
     TRAGHETTI: [],
     EXTRA: [],
@@ -229,6 +234,7 @@ function buildEmptyCostListMap(): Record<CostoCategoria, Costo[]> {
 function buildEmptyBookingListMap(): Record<CostoCategoria, BookingCost[]> {
   return {
     BENZINA: [],
+    PEDAGGI: [],
     HOTEL: [],
     TRAGHETTI: [],
     EXTRA: [],
@@ -265,6 +271,8 @@ export default function CostiViaggio({ viaggioId }: CostiViaggioProps) {
   const [error, setError] = useState<string | null>(null);
   const [categoriaFiltro, setCategoriaFiltro] = useState<CategoriaFiltro>("ALL");
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [modalMode, setModalMode] = useState<CostoModalMode>("full");
+  const [quickPresetCategoria, setQuickPresetCategoria] = useState<QuickPresetCategoria>("BENZINA");
   const [editingCosto, setEditingCosto] = useState<Costo | null>(null);
   const [payerLabels, setPayerLabels] = useState<{ labelIO: string; labelLEI: string }>({
     labelIO: "IO",
@@ -457,16 +465,43 @@ export default function CostiViaggio({ viaggioId }: CostiViaggioProps) {
     <section className="card detailCard costiPage">
       <div className="costiToolbar">
         <h2 style={{ margin: 0 }}>Costi</h2>
-        <button
-          type="button"
-          className="buttonPrimary"
-          onClick={() => {
-            setEditingCosto(null);
-            setIsModalOpen(true);
-          }}
-        >
-          + Aggiungi costo
-        </button>
+        <div style={{ display: "flex", gap: "0.45rem", flexWrap: "wrap" }}>
+          <button
+            type="button"
+            className="buttonGhost"
+            onClick={() => {
+              setEditingCosto(null);
+              setModalMode("quick");
+              setQuickPresetCategoria("BENZINA");
+              setIsModalOpen(true);
+            }}
+          >
+            + Benzina
+          </button>
+          <button
+            type="button"
+            className="buttonGhost"
+            onClick={() => {
+              setEditingCosto(null);
+              setModalMode("quick");
+              setQuickPresetCategoria("PEDAGGI");
+              setIsModalOpen(true);
+            }}
+          >
+            + Pedaggio
+          </button>
+          <button
+            type="button"
+            className="buttonPrimary"
+            onClick={() => {
+              setEditingCosto(null);
+              setModalMode("full");
+              setIsModalOpen(true);
+            }}
+          >
+            + Aggiungi costo
+          </button>
+        </div>
       </div>
 
       <div className="costiFilters">
@@ -483,6 +518,13 @@ export default function CostiViaggio({ viaggioId }: CostiViaggioProps) {
           onClick={() => setCategoriaFiltro("BENZINA")}
         >
           Benzina
+        </button>
+        <button
+          type="button"
+          className={categoriaFiltro === "PEDAGGI" ? "buttonPrimary" : "buttonGhost"}
+          onClick={() => setCategoriaFiltro("PEDAGGI")}
+        >
+          Pedaggi
         </button>
         <button
           type="button"
@@ -628,6 +670,15 @@ export default function CostiViaggio({ viaggioId }: CostiViaggioProps) {
                 <ul className="listPlain cardsGrid">
                   {manualItems.map((costo) => {
                     const quote = getManualQuote(costo);
+                    const litriText =
+                      typeof costo.litri === "number" && Number.isFinite(costo.litri)
+                        ? `${costo.litri.toFixed(1)} L`
+                        : null;
+                    const prezzoLitroText =
+                      typeof costo.prezzoLitro === "number" && Number.isFinite(costo.prezzoLitro)
+                        ? `${costo.prezzoLitro.toFixed(3)} EUR/L`
+                        : null;
+                    const benzinaDetail = [litriText, prezzoLitroText].filter(Boolean).join(" · ");
                     return (
                       <li key={costo.id} className="card costiCard">
                         <div className="costiCardHeader">
@@ -640,6 +691,11 @@ export default function CostiViaggio({ viaggioId }: CostiViaggioProps) {
                         <p className="metaText" style={{ margin: "0.25rem 0" }}>
                           Importo: {formatEuro(costo.importo)}
                         </p>
+                        {costo.categoria === "BENZINA" && benzinaDetail && (
+                          <p className="metaText" style={{ margin: "0.25rem 0" }}>
+                            {benzinaDetail}
+                          </p>
+                        )}
                         <p className="metaText" style={{ margin: "0.25rem 0" }}>
                           Quota {payerLabels.labelIO}: {formatEuro(quote.quotaIo)} | Quota {payerLabels.labelLEI}:{" "}
                           {formatEuro(quote.quotaLei)}
@@ -655,6 +711,7 @@ export default function CostiViaggio({ viaggioId }: CostiViaggioProps) {
                             className="buttonGhost"
                             onClick={() => {
                               setEditingCosto(costo);
+                              setModalMode("full");
                               setIsModalOpen(true);
                             }}
                           >
@@ -794,6 +851,8 @@ export default function CostiViaggio({ viaggioId }: CostiViaggioProps) {
         isOpen={isModalOpen}
         viaggioId={viaggioId}
         initialCosto={editingCosto}
+        mode={modalMode}
+        quickPresetCategoria={quickPresetCategoria}
         onClose={() => setIsModalOpen(false)}
         onSaved={() => void loadCosti()}
       />

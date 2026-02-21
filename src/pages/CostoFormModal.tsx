@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Costo, CostoCategoria, CostoPagatoDa } from "../models/Costo";
 import type { Giorno } from "../models/Giorno";
 import type { ImpostazioniApp } from "../models/ImpostazioniApp";
@@ -9,6 +9,8 @@ interface CostoFormModalProps {
   isOpen: boolean;
   viaggioId: string;
   initialCosto?: Costo | null;
+  mode?: "full" | "quick";
+  quickPresetCategoria?: "BENZINA" | "PEDAGGI";
   onClose: () => void;
   onSaved: () => void;
 }
@@ -20,6 +22,8 @@ interface CostoFormState {
   data: string;
   ora: string;
   importo: string;
+  litri: string;
+  prezzoLitro: string;
   pagatoDa: CostoPagatoDa;
   quotaIo: string;
   quotaLei: string;
@@ -31,6 +35,14 @@ function toDateInput(value?: string): string {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return "";
   return parsed.toISOString().slice(0, 10);
+}
+
+function todayDateInput(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function roundTwo(value: number): number {
+  return Math.round(value * 100) / 100;
 }
 
 function numberToString(value?: number): string {
@@ -64,6 +76,8 @@ function buildInitialState(costo?: Costo | null): CostoFormState {
     data: toDateInput(costo?.data),
     ora: costo?.ora ?? "",
     importo: numberToString(costo?.importo),
+    litri: numberToString(costo?.litri),
+    prezzoLitro: numberToString(costo?.prezzoLitro),
     pagatoDa: costo?.pagatoDa ?? "IO",
     quotaIo: numberToString(costo?.quotaIo),
     quotaLei: numberToString(costo?.quotaLei),
@@ -88,6 +102,8 @@ export default function CostoFormModal({
   isOpen,
   viaggioId,
   initialCosto,
+  mode = "full",
+  quickPresetCategoria,
   onClose,
   onSaved,
 }: CostoFormModalProps) {
@@ -100,15 +116,40 @@ export default function CostoFormModal({
     labelLEI: "LEI",
   });
 
+  const effectiveMode: "full" | "quick" = initialCosto ? "full" : mode;
+  const quickCategoria: "BENZINA" | "PEDAGGI" = quickPresetCategoria ?? "BENZINA";
+  const isQuickBenzina = effectiveMode === "quick" && quickCategoria === "BENZINA";
+  const isQuickPedaggi = effectiveMode === "quick" && quickCategoria === "PEDAGGI";
+
+  const modalTitle = useMemo(() => {
+    if (initialCosto) {
+      return "Modifica costo";
+    }
+    if (isQuickBenzina) {
+      return "Quick Add Benzina";
+    }
+    if (isQuickPedaggi) {
+      return "Quick Add Pedaggio";
+    }
+    return "Nuovo costo";
+  }, [initialCosto, isQuickBenzina, isQuickPedaggi]);
+
   useEffect(() => {
     if (!isOpen) return;
 
-    setForm(buildInitialState(initialCosto));
+    const baseState = buildInitialState(initialCosto);
+    if (!initialCosto && effectiveMode === "quick") {
+      baseState.categoria = quickCategoria;
+      baseState.titolo = quickCategoria === "BENZINA" ? "Benzina" : "Pedaggio";
+      baseState.data = baseState.data || todayDateInput();
+    }
+
+    setForm(baseState);
     setError(null);
-  }, [isOpen, initialCosto]);
+  }, [isOpen, initialCosto, effectiveMode, quickCategoria]);
 
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || effectiveMode !== "full") return;
 
     let isActive = true;
 
@@ -130,7 +171,7 @@ export default function CostoFormModal({
     return () => {
       isActive = false;
     };
-  }, [isOpen, viaggioId]);
+  }, [isOpen, viaggioId, effectiveMode]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -156,25 +197,116 @@ export default function CostoFormModal({
     };
   }, [isOpen]);
 
+  const derivedPrezzoLitro = useMemo(() => {
+    if (!isQuickBenzina) {
+      return undefined;
+    }
+
+    const importo = toOptionalNumber(form.importo);
+    const litri = toOptionalNumber(form.litri);
+    if (importo === undefined || importo <= 0 || litri === undefined || litri <= 0) {
+      return undefined;
+    }
+
+    return roundTwo(importo / litri);
+  }, [form.importo, form.litri, isQuickBenzina]);
+
   if (!isOpen) return null;
 
-  async function handleSave(): Promise<void> {
-    const titolo = form.titolo.trim();
-    if (!titolo) {
-      setError("Titolo obbligatorio.");
+  function handleCalcolaImporto(): void {
+    const litri = toOptionalNumber(form.litri);
+    const prezzoLitro = toOptionalNumber(form.prezzoLitro);
+
+    if (litri === undefined || litri <= 0) {
+      setError("Inserisci litri validi per calcolare l'importo.");
       return;
     }
 
+    if (prezzoLitro === undefined || prezzoLitro <= 0) {
+      setError("Inserisci un prezzo/L valido per calcolare l'importo.");
+      return;
+    }
+
+    const importoCalcolato = roundTwo(litri * prezzoLitro);
+    setForm((current) => ({ ...current, importo: importoCalcolato.toFixed(2) }));
+    setError(null);
+  }
+
+  async function handleSave(): Promise<void> {
     const dataIso = toIsoDate(form.data);
     if (!dataIso) {
       setError("Data obbligatoria e valida.");
       return;
     }
 
-    const importo = toOptionalNumber(form.importo);
-    if (importo === undefined || importo <= 0) {
-      setError("Importo deve essere maggiore di zero.");
+    const categoriaFinale: CostoCategoria =
+      effectiveMode === "quick" ? quickCategoria : form.categoria;
+    const titoloFinale =
+      effectiveMode === "quick"
+        ? quickCategoria === "BENZINA"
+          ? "Benzina"
+          : "Pedaggio"
+        : form.titolo.trim();
+
+    if (effectiveMode === "full" && !titoloFinale) {
+      setError("Titolo obbligatorio.");
       return;
+    }
+
+    const importoInput = toOptionalNumber(form.importo);
+    const litriInput = toOptionalNumber(form.litri);
+    const prezzoLitroInput = toOptionalNumber(form.prezzoLitro);
+
+    let importoFinale = importoInput;
+    let litriFinali: number | undefined;
+    let prezzoLitroFinale: number | undefined;
+
+    if (isQuickBenzina) {
+      if (litriInput === undefined || litriInput <= 0) {
+        setError("Litri obbligatori e maggiori di zero.");
+        return;
+      }
+
+      if (prezzoLitroInput !== undefined && prezzoLitroInput <= 0) {
+        setError("Prezzo/L deve essere maggiore di zero.");
+        return;
+      }
+
+      if (prezzoLitroInput !== undefined) {
+        importoFinale = roundTwo(litriInput * prezzoLitroInput);
+      }
+
+      if (importoFinale === undefined || importoFinale <= 0) {
+        setError("Importo obbligatorio e maggiore di zero.");
+        return;
+      }
+
+      litriFinali = litriInput;
+      prezzoLitroFinale =
+        prezzoLitroInput !== undefined ? prezzoLitroInput : roundTwo(importoFinale / litriInput);
+    } else if (isQuickPedaggi) {
+      if (importoFinale === undefined || importoFinale <= 0) {
+        setError("Importo obbligatorio e maggiore di zero.");
+        return;
+      }
+    } else {
+      if (importoFinale === undefined || importoFinale <= 0) {
+        setError("Importo deve essere maggiore di zero.");
+        return;
+      }
+
+      if (categoriaFinale === "BENZINA") {
+        if (litriInput !== undefined && litriInput <= 0) {
+          setError("Litri deve essere maggiore di zero.");
+          return;
+        }
+        if (prezzoLitroInput !== undefined && prezzoLitroInput <= 0) {
+          setError("Prezzo/L deve essere maggiore di zero.");
+          return;
+        }
+        litriFinali = litriInput;
+        prezzoLitroFinale = prezzoLitroInput;
+      }
     }
 
     const quotaIo = toOptionalNumber(form.quotaIo);
@@ -186,7 +318,7 @@ export default function CostoFormModal({
         return;
       }
 
-      const diff = Math.abs(quotaIo + quotaLei - importo);
+      const diff = Math.abs(quotaIo + quotaLei - importoFinale);
       if (diff > 0.01) {
         setError(
           `Quota ${payerLabels.labelIO} + quota ${payerLabels.labelLEI} deve essere uguale all'importo.`,
@@ -207,13 +339,15 @@ export default function CostoFormModal({
             ? crypto.randomUUID()
             : `costo_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`),
         viaggioId,
-        giornoId: toOptionalString(form.giornoId),
-        categoria: form.categoria,
-        titolo,
+        giornoId: effectiveMode === "full" ? toOptionalString(form.giornoId) : undefined,
+        categoria: categoriaFinale,
+        titolo: titoloFinale,
         data: dataIso,
-        ora: toOptionalString(form.ora),
+        ora: effectiveMode === "full" ? toOptionalString(form.ora) : undefined,
         valuta: "EUR",
-        importo,
+        importo: importoFinale,
+        litri: categoriaFinale === "BENZINA" ? litriFinali : undefined,
+        prezzoLitro: categoriaFinale === "BENZINA" ? prezzoLitroFinale : undefined,
         pagatoDa: form.pagatoDa,
         quotaIo: form.pagatoDa === "DIVISO" ? quotaIo : undefined,
         quotaLei: form.pagatoDa === "DIVISO" ? quotaLei : undefined,
@@ -252,7 +386,7 @@ export default function CostoFormModal({
     <div className="costiModalOverlay" onClick={onClose}>
       <div className="costiModal card" onClick={(event) => event.stopPropagation()}>
         <div className="costiModalHeader">
-          <h2 style={{ margin: 0 }}>{initialCosto ? "Modifica costo" : "Nuovo costo"}</h2>
+          <h2 style={{ margin: 0 }}>{modalTitle}</h2>
           <button type="button" className="buttonGhost" onClick={onClose}>
             {"\u2715"}
           </button>
@@ -260,114 +394,247 @@ export default function CostoFormModal({
 
         {error && <p className="errorText">{error}</p>}
 
-        <div className="costiGrid">
-          <select
-            className="inputField"
-            value={form.categoria}
-            onChange={(event) =>
-              setForm((current) => ({
-                ...current,
-                categoria: event.target.value as CostoCategoria,
-              }))
-            }
-          >
-            <option value="BENZINA">BENZINA</option>
-            <option value="HOTEL">HOTEL</option>
-            <option value="TRAGHETTI">TRAGHETTI</option>
-            <option value="EXTRA">EXTRA</option>
-          </select>
+        {effectiveMode === "full" ? (
+          <div className="costiGrid">
+            <select
+              className="inputField"
+              value={form.categoria}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  categoria: event.target.value as CostoCategoria,
+                }))
+              }
+            >
+              <option value="BENZINA">BENZINA</option>
+              <option value="PEDAGGI">PEDAGGI</option>
+              <option value="HOTEL">HOTEL</option>
+              <option value="TRAGHETTI">TRAGHETTI</option>
+              <option value="EXTRA">EXTRA</option>
+            </select>
 
-          <select
-            className="inputField"
-            value={form.pagatoDa}
-            onChange={(event) =>
-              setForm((current) => ({
-                ...current,
-                pagatoDa: event.target.value as CostoPagatoDa,
-              }))
-            }
-          >
-            <option value="IO">{payerLabels.labelIO}</option>
-            <option value="LEI">{payerLabels.labelLEI}</option>
-            <option value="DIVISO">DIVISO</option>
-          </select>
+            <select
+              className="inputField"
+              value={form.pagatoDa}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  pagatoDa: event.target.value as CostoPagatoDa,
+                }))
+              }
+            >
+              <option value="IO">{payerLabels.labelIO}</option>
+              <option value="LEI">{payerLabels.labelLEI}</option>
+              <option value="DIVISO">DIVISO</option>
+            </select>
 
-          <input
-            className="inputField costiCol2"
-            type="text"
-            placeholder="Titolo"
-            value={form.titolo}
-            onChange={(event) => setForm((current) => ({ ...current, titolo: event.target.value }))}
-          />
+            <input
+              className="inputField costiCol2"
+              type="text"
+              placeholder="Titolo"
+              value={form.titolo}
+              onChange={(event) => setForm((current) => ({ ...current, titolo: event.target.value }))}
+            />
 
-          <input
-            className="inputField"
-            type="date"
-            value={form.data}
-            onChange={(event) => setForm((current) => ({ ...current, data: event.target.value }))}
-          />
+            <input
+              className="inputField"
+              type="date"
+              value={form.data}
+              onChange={(event) => setForm((current) => ({ ...current, data: event.target.value }))}
+            />
 
-          <input
-            className="inputField"
-            type="time"
-            value={form.ora}
-            onChange={(event) => setForm((current) => ({ ...current, ora: event.target.value }))}
-          />
+            <input
+              className="inputField"
+              type="time"
+              value={form.ora}
+              onChange={(event) => setForm((current) => ({ ...current, ora: event.target.value }))}
+            />
 
-          <input
-            className="inputField"
-            type="number"
-            min={0}
-            step="0.01"
-            placeholder="Importo"
-            value={form.importo}
-            onChange={(event) => setForm((current) => ({ ...current, importo: event.target.value }))}
-          />
+            <input
+              className="inputField"
+              type="number"
+              min={0}
+              step="0.01"
+              placeholder="Importo"
+              value={form.importo}
+              onChange={(event) => setForm((current) => ({ ...current, importo: event.target.value }))}
+            />
 
-          <select
-            className="inputField"
-            value={form.giornoId}
-            onChange={(event) => setForm((current) => ({ ...current, giornoId: event.target.value }))}
-          >
-            <option value="">Non collegato a un giorno</option>
-            {giorni.map((giorno) => (
-              <option key={giorno.id} value={giorno.id}>
-                {formatDayOption(giorno)}
-              </option>
-            ))}
-          </select>
+            <select
+              className="inputField"
+              value={form.giornoId}
+              onChange={(event) => setForm((current) => ({ ...current, giornoId: event.target.value }))}
+            >
+              <option value="">Non collegato a un giorno</option>
+              {giorni.map((giorno) => (
+                <option key={giorno.id} value={giorno.id}>
+                  {formatDayOption(giorno)}
+                </option>
+              ))}
+            </select>
 
-          {form.pagatoDa === "DIVISO" && (
-            <>
+            {form.categoria === "BENZINA" && (
+              <>
+                <input
+                  className="inputField"
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  placeholder="Litri (opz.)"
+                  value={form.litri}
+                  onChange={(event) => setForm((current) => ({ ...current, litri: event.target.value }))}
+                />
+                <input
+                  className="inputField"
+                  type="number"
+                  min={0}
+                  step="0.001"
+                  placeholder="Prezzo/L (opz.)"
+                  value={form.prezzoLitro}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, prezzoLitro: event.target.value }))
+                  }
+                />
+              </>
+            )}
+
+            {form.pagatoDa === "DIVISO" && (
+              <>
+                <input
+                  className="inputField"
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  placeholder={`Quota ${payerLabels.labelIO}`}
+                  value={form.quotaIo}
+                  onChange={(event) => setForm((current) => ({ ...current, quotaIo: event.target.value }))}
+                />
+                <input
+                  className="inputField"
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  placeholder={`Quota ${payerLabels.labelLEI}`}
+                  value={form.quotaLei}
+                  onChange={(event) => setForm((current) => ({ ...current, quotaLei: event.target.value }))}
+                />
+              </>
+            )}
+
+            <textarea
+              className="inputField costiCol2"
+              rows={4}
+              placeholder="Note"
+              value={form.note}
+              onChange={(event) => setForm((current) => ({ ...current, note: event.target.value }))}
+            />
+          </div>
+        ) : (
+          <div className="costiGrid">
+            <p className="metaText costiCol2" style={{ margin: "0.2rem 0" }}>
+              Categoria bloccata: <strong>{quickCategoria}</strong>
+            </p>
+
+            <input
+              className="inputField"
+              type="number"
+              min={0}
+              step="0.01"
+              placeholder="Importo (EUR)"
+              value={form.importo}
+              onChange={(event) => setForm((current) => ({ ...current, importo: event.target.value }))}
+            />
+
+            {isQuickBenzina && (
               <input
                 className="inputField"
                 type="number"
                 min={0}
                 step="0.01"
-                placeholder={`Quota ${payerLabels.labelIO}`}
-                value={form.quotaIo}
-                onChange={(event) => setForm((current) => ({ ...current, quotaIo: event.target.value }))}
+                placeholder="Litri"
+                value={form.litri}
+                onChange={(event) => setForm((current) => ({ ...current, litri: event.target.value }))}
               />
+            )}
+
+            {isQuickBenzina && (
               <input
                 className="inputField"
                 type="number"
                 min={0}
-                step="0.01"
-                placeholder={`Quota ${payerLabels.labelLEI}`}
-                value={form.quotaLei}
-                onChange={(event) => setForm((current) => ({ ...current, quotaLei: event.target.value }))}
+                step="0.001"
+                placeholder="Prezzo/L (opz.)"
+                value={form.prezzoLitro}
+                onChange={(event) => setForm((current) => ({ ...current, prezzoLitro: event.target.value }))}
               />
-            </>
-          )}
+            )}
 
-          <textarea
-            className="inputField costiCol2"
-            rows={4}
-            placeholder="Note"
-            value={form.note}
-            onChange={(event) => setForm((current) => ({ ...current, note: event.target.value }))}
-          />
-        </div>
+            {isQuickBenzina && (
+              <button type="button" className="buttonGhost" onClick={handleCalcolaImporto}>
+                Calcola
+              </button>
+            )}
+
+            <select
+              className="inputField"
+              value={form.pagatoDa}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  pagatoDa: event.target.value as CostoPagatoDa,
+                }))
+              }
+            >
+              <option value="IO">{payerLabels.labelIO}</option>
+              <option value="LEI">{payerLabels.labelLEI}</option>
+              <option value="DIVISO">DIVISO</option>
+            </select>
+
+            <input
+              className="inputField"
+              type="date"
+              value={form.data}
+              onChange={(event) => setForm((current) => ({ ...current, data: event.target.value }))}
+            />
+
+            {isQuickBenzina && !form.prezzoLitro.trim() && derivedPrezzoLitro !== undefined && (
+              <p className="metaText costiCol2" style={{ margin: "0.1rem 0" }}>
+                Prezzo/L calcolato: {derivedPrezzoLitro.toFixed(3)} EUR/L
+              </p>
+            )}
+
+            {form.pagatoDa === "DIVISO" && (
+              <>
+                <input
+                  className="inputField"
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  placeholder={`Quota ${payerLabels.labelIO}`}
+                  value={form.quotaIo}
+                  onChange={(event) => setForm((current) => ({ ...current, quotaIo: event.target.value }))}
+                />
+                <input
+                  className="inputField"
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  placeholder={`Quota ${payerLabels.labelLEI}`}
+                  value={form.quotaLei}
+                  onChange={(event) => setForm((current) => ({ ...current, quotaLei: event.target.value }))}
+                />
+              </>
+            )}
+
+            <textarea
+              className="inputField costiCol2"
+              rows={3}
+              placeholder={isQuickPedaggi ? "Tratta / casello / nota" : "Distributore / localita / nota"}
+              value={form.note}
+              onChange={(event) => setForm((current) => ({ ...current, note: event.target.value }))}
+            />
+          </div>
+        )}
 
         <div className="costiModalFooter">
           {initialCosto && (

@@ -1,4 +1,4 @@
-export type CostoCategoria = "BENZINA" | "HOTEL" | "TRAGHETTI" | "EXTRA";
+export type CostoCategoria = "BENZINA" | "PEDAGGI" | "HOTEL" | "TRAGHETTI" | "EXTRA";
 export type CostoPagatoDa = "IO" | "LEI" | "DIVISO";
 
 export interface Costo {
@@ -11,6 +11,8 @@ export interface Costo {
   ora?: string;
   valuta: "EUR";
   importo: number;
+  litri?: number;
+  prezzoLitro?: number;
   pagatoDa: CostoPagatoDa;
   quotaIo?: number;
   quotaLei?: number;

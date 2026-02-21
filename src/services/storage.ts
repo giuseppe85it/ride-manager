@@ -78,7 +78,13 @@ function isPrenotazioneStato(value: unknown): value is PrenotazioneStato {
 }
 
 function isCostoCategoria(value: unknown): value is CostoCategoria {
-  return value === "BENZINA" || value === "HOTEL" || value === "TRAGHETTI" || value === "EXTRA";
+  return (
+    value === "BENZINA" ||
+    value === "PEDAGGI" ||
+    value === "HOTEL" ||
+    value === "TRAGHETTI" ||
+    value === "EXTRA"
+  );
 }
 
 function isCostoPagatoDa(value: unknown): value is CostoPagatoDa {
@@ -247,6 +253,8 @@ function normalizeCosto(record: LegacyCostoRecord): Costo | null {
     ora: toOptionalString(record.ora),
     valuta: "EUR",
     importo,
+    litri: toOptionalNumber(record.litri),
+    prezzoLitro: toOptionalNumber(record.prezzoLitro),
     pagatoDa: isCostoPagatoDa(record.pagatoDa) ? record.pagatoDa : "IO",
     quotaIo: toOptionalNumber(record.quotaIo),
     quotaLei: toOptionalNumber(record.quotaLei),
