@@ -12,6 +12,7 @@ interface CostiViaggioProps {
 
 type CategoriaFiltro = "ALL" | CostoCategoria;
 type BookingCostCategory = "HOTEL" | "TRAGHETTI";
+type BookingPagatoDa = "IO" | "LEI" | "DIVISO";
 
 interface BookingCost {
   id: string;
@@ -23,6 +24,9 @@ interface BookingCost {
   importo: number;
   valuta: "EUR";
   pagato: boolean;
+  pagatoDa?: BookingPagatoDa;
+  quotaIo?: number;
+  quotaLei?: number;
 }
 
 interface CategoryTotals {
@@ -31,11 +35,22 @@ interface CategoryTotals {
   total: number;
 }
 
+interface BookingQuoteResult {
+  included: boolean;
+  quotaIo: number;
+  quotaLei: number;
+  missingPayer: boolean;
+  invalidSplit: boolean;
+}
+
+const CATEGORY_ORDER: CostoCategoria[] = ["BENZINA", "HOTEL", "TRAGHETTI", "EXTRA"];
+
 function formatDate(value: string): string {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) {
     return "\u2014";
   }
+
   return new Intl.DateTimeFormat("it-IT", {
     day: "2-digit",
     month: "2-digit",
@@ -57,7 +72,7 @@ function categoriaLabel(categoria: CostoCategoria): string {
   return "Extra";
 }
 
-function getQuote(costo: Costo): { quotaIo: number; quotaLei: number } {
+function getManualQuote(costo: Costo): { quotaIo: number; quotaLei: number } {
   if (costo.pagatoDa === "IO") {
     return { quotaIo: costo.importo, quotaLei: 0 };
   }
@@ -102,14 +117,6 @@ function parseDateTimeKey(dateValue: string, timeValue?: string): number {
   return base + (hour * 60 + minute) * 60 * 1000;
 }
 
-function sortManualCostsDesc(left: Costo, right: Costo): number {
-  return parseDateTimeKey(right.data, right.ora) - parseDateTimeKey(left.data, left.ora);
-}
-
-function sortBookingCostsDesc(left: BookingCost, right: BookingCost): number {
-  return parseDateTimeKey(right.data, right.ora) - parseDateTimeKey(left.data, left.ora);
-}
-
 function formatDateWithOra(dateValue: string, timeValue?: string): string {
   return `${formatDate(dateValue)}${timeValue ? ` - ${timeValue}` : ""}`;
 }
@@ -122,6 +129,108 @@ function getBookingCategoria(tipo: Prenotazione["tipo"]): BookingCostCategory | 
     return "TRAGHETTI";
   }
   return null;
+}
+
+function getBookingPayer(value: unknown): BookingPagatoDa | undefined {
+  if (value === "IO" || value === "LEI" || value === "DIVISO") {
+    return value;
+  }
+  return undefined;
+}
+
+function getBookingQuoteResult(booking: BookingCost): BookingQuoteResult {
+  if (booking.pagatoDa === "IO") {
+    return {
+      included: true,
+      quotaIo: booking.importo,
+      quotaLei: 0,
+      missingPayer: false,
+      invalidSplit: false,
+    };
+  }
+
+  if (booking.pagatoDa === "LEI") {
+    return {
+      included: true,
+      quotaIo: 0,
+      quotaLei: booking.importo,
+      missingPayer: false,
+      invalidSplit: false,
+    };
+  }
+
+  if (booking.pagatoDa === "DIVISO") {
+    const quotaIo = typeof booking.quotaIo === "number" ? booking.quotaIo : undefined;
+    const quotaLei = typeof booking.quotaLei === "number" ? booking.quotaLei : undefined;
+
+    if (quotaIo === undefined || quotaLei === undefined) {
+      return {
+        included: false,
+        quotaIo: 0,
+        quotaLei: 0,
+        missingPayer: false,
+        invalidSplit: true,
+      };
+    }
+
+    const delta = Math.abs(quotaIo + quotaLei - booking.importo);
+    if (delta > 0.01) {
+      return {
+        included: false,
+        quotaIo: 0,
+        quotaLei: 0,
+        missingPayer: false,
+        invalidSplit: true,
+      };
+    }
+
+    return {
+      included: true,
+      quotaIo,
+      quotaLei,
+      missingPayer: false,
+      invalidSplit: false,
+    };
+  }
+
+  return {
+    included: false,
+    quotaIo: 0,
+    quotaLei: 0,
+    missingPayer: true,
+    invalidSplit: false,
+  };
+}
+
+function buildEmptyTotals(): Record<CostoCategoria, CategoryTotals> {
+  return {
+    BENZINA: { confirmed: 0, unpaid: 0, total: 0 },
+    HOTEL: { confirmed: 0, unpaid: 0, total: 0 },
+    TRAGHETTI: { confirmed: 0, unpaid: 0, total: 0 },
+    EXTRA: { confirmed: 0, unpaid: 0, total: 0 },
+  };
+}
+
+function buildEmptyCostListMap(): Record<CostoCategoria, Costo[]> {
+  return {
+    BENZINA: [],
+    HOTEL: [],
+    TRAGHETTI: [],
+    EXTRA: [],
+  };
+}
+
+function buildEmptyBookingListMap(): Record<CostoCategoria, BookingCost[]> {
+  return {
+    BENZINA: [],
+    HOTEL: [],
+    TRAGHETTI: [],
+    EXTRA: [],
+  };
+}
+
+function getPayerBadgeLabel(value?: BookingPagatoDa): string {
+  return value ?? "PAYER?";
 }
 
 export default function CostiViaggio({ viaggioId }: CostiViaggioProps) {
@@ -179,79 +288,123 @@ export default function CostiViaggio({ viaggioId }: CostiViaggioProps) {
           importo,
           valuta: prenotazione.valuta,
           pagato: prenotazione.pagato === true,
+          pagatoDa: getBookingPayer(prenotazione.pagatoDa),
+          quotaIo: typeof prenotazione.quotaIo === "number" ? prenotazione.quotaIo : undefined,
+          quotaLei: typeof prenotazione.quotaLei === "number" ? prenotazione.quotaLei : undefined,
         },
       ];
     });
   }, [prenotazioni]);
 
-  const costiManualiFiltrati = useMemo(() => {
-    return [...costi]
-      .filter((costo) => (categoriaFiltro === "ALL" ? true : costo.categoria === categoriaFiltro))
-      .sort(sortManualCostsDesc);
-  }, [costi, categoriaFiltro]);
+  const analytics = useMemo(() => {
+    const visibleCategories = CATEGORY_ORDER.filter((category) =>
+      categoriaFiltro === "ALL" ? true : category === categoriaFiltro,
+    );
+    const visibleSet = new Set<CostoCategoria>(visibleCategories);
 
-  const bookingPaidFiltrati = useMemo(() => {
-    return bookingCosts
-      .filter((booking) => booking.pagato)
-      .filter((booking) => (categoriaFiltro === "ALL" ? true : booking.categoria === categoriaFiltro))
-      .sort(sortBookingCostsDesc);
-  }, [bookingCosts, categoriaFiltro]);
-
-  const bookingUnpaidFiltrati = useMemo(() => {
-    return bookingCosts
-      .filter((booking) => !booking.pagato)
-      .filter((booking) => (categoriaFiltro === "ALL" ? true : booking.categoria === categoriaFiltro))
-      .sort(sortBookingCostsDesc);
-  }, [bookingCosts, categoriaFiltro]);
-
-  const totals = useMemo(() => {
-    const totalsByCategory: Record<CostoCategoria, CategoryTotals> = {
-      BENZINA: { confirmed: 0, unpaid: 0, total: 0 },
-      HOTEL: { confirmed: 0, unpaid: 0, total: 0 },
-      TRAGHETTI: { confirmed: 0, unpaid: 0, total: 0 },
-      EXTRA: { confirmed: 0, unpaid: 0, total: 0 },
-    };
-
-    let totaleManualiConfermati = 0;
-    let totaleBookingConfermati = 0;
-    let totaleBookingDaPagare = 0;
-    let totaleIo = 0;
-    let totaleLei = 0;
-
+    const manualByCategory = buildEmptyCostListMap();
     for (const costo of costi) {
-      totaleManualiConfermati += costo.importo;
-      totalsByCategory[costo.categoria].confirmed += costo.importo;
-      totalsByCategory[costo.categoria].total += costo.importo;
-      const quote = getQuote(costo);
-      totaleIo += quote.quotaIo;
-      totaleLei += quote.quotaLei;
-    }
-
-    for (const booking of bookingCosts) {
-      if (booking.pagato) {
-        totaleBookingConfermati += booking.importo;
-        totalsByCategory[booking.categoria].confirmed += booking.importo;
-      } else {
-        totaleBookingDaPagare += booking.importo;
-        totalsByCategory[booking.categoria].unpaid += booking.importo;
+      if (visibleSet.has(costo.categoria)) {
+        manualByCategory[costo.categoria].push(costo);
       }
-      totalsByCategory[booking.categoria].total += booking.importo;
+    }
+    for (const category of CATEGORY_ORDER) {
+      manualByCategory[category].sort(
+        (left, right) => parseDateTimeKey(right.data, right.ora) - parseDateTimeKey(left.data, left.ora),
+      );
     }
 
-    const totaleConfermato = totaleManualiConfermati + totaleBookingConfermati;
-    const totaleComplessivo = totaleConfermato + totaleBookingDaPagare;
+    const bookingPaidByCategory = buildEmptyBookingListMap();
+    const bookingUnpaidByCategory = buildEmptyBookingListMap();
+    for (const booking of bookingCosts) {
+      if (!visibleSet.has(booking.categoria)) {
+        continue;
+      }
+
+      if (booking.pagato) {
+        bookingPaidByCategory[booking.categoria].push(booking);
+      } else {
+        bookingUnpaidByCategory[booking.categoria].push(booking);
+      }
+    }
+    for (const category of CATEGORY_ORDER) {
+      bookingPaidByCategory[category].sort(
+        (left, right) => parseDateTimeKey(right.data, right.ora) - parseDateTimeKey(left.data, left.ora),
+      );
+      bookingUnpaidByCategory[category].sort(
+        (left, right) => parseDateTimeKey(right.data, right.ora) - parseDateTimeKey(left.data, left.ora),
+      );
+    }
+
+    const totalsByCategory = buildEmptyTotals();
+    for (const category of visibleCategories) {
+      const manualTotal = manualByCategory[category].reduce((acc, item) => acc + item.importo, 0);
+      const bookingPaidTotal = bookingPaidByCategory[category].reduce((acc, item) => acc + item.importo, 0);
+      const bookingUnpaidTotal = bookingUnpaidByCategory[category].reduce(
+        (acc, item) => acc + item.importo,
+        0,
+      );
+
+      totalsByCategory[category] = {
+        confirmed: manualTotal + bookingPaidTotal,
+        unpaid: bookingUnpaidTotal,
+        total: manualTotal + bookingPaidTotal + bookingUnpaidTotal,
+      };
+    }
+
+    let totaleConfermato = 0;
+    let totaleDaPagare = 0;
+    let totaleComplessivo = 0;
+    for (const category of visibleCategories) {
+      totaleConfermato += totalsByCategory[category].confirmed;
+      totaleDaPagare += totalsByCategory[category].unpaid;
+      totaleComplessivo += totalsByCategory[category].total;
+    }
+
+    let quotaIoTotale = 0;
+    let quotaLeiTotale = 0;
+    let bookingPaidMissingPayer = 0;
+    let bookingPaidInvalidSplit = 0;
+
+    for (const category of visibleCategories) {
+      for (const manualItem of manualByCategory[category]) {
+        const quote = getManualQuote(manualItem);
+        quotaIoTotale += quote.quotaIo;
+        quotaLeiTotale += quote.quotaLei;
+      }
+
+      for (const bookingItem of bookingPaidByCategory[category]) {
+        const quoteResult = getBookingQuoteResult(bookingItem);
+        if (quoteResult.included) {
+          quotaIoTotale += quoteResult.quotaIo;
+          quotaLeiTotale += quoteResult.quotaLei;
+          continue;
+        }
+
+        if (quoteResult.missingPayer) {
+          bookingPaidMissingPayer += 1;
+        }
+        if (quoteResult.invalidSplit) {
+          bookingPaidInvalidSplit += 1;
+        }
+      }
+    }
 
     return {
-      totaleConfermato,
-      totaleDaPagare: totaleBookingDaPagare,
-      totaleComplessivo,
-      totaleManualiConfermati,
-      totaleBookingConfermati,
+      visibleCategories,
+      manualByCategory,
+      bookingPaidByCategory,
+      bookingUnpaidByCategory,
       totalsByCategory,
-      totaleIo,
-      totaleLei,
+      totaleConfermato,
+      totaleDaPagare,
+      totaleComplessivo,
+      quotaIoTotale,
+      quotaLeiTotale,
+      bookingPaidMissingPayer,
+      bookingPaidInvalidSplit,
     };
-  }, [bookingCosts, costi]);
+  }, [bookingCosts, categoriaFiltro, costi]);
 
   async function handleDelete(costoId: string): Promise<void> {
     const confirmed = window.confirm("Eliminare questo costo?");
@@ -322,188 +475,285 @@ export default function CostiViaggio({ viaggioId }: CostiViaggioProps) {
         </button>
       </div>
 
-      <div className="costiTotals">
-        <div className="card" style={{ padding: "0.75rem" }}>
+      <div className="costiTotals" style={{ marginBottom: "0.8rem" }}>
+        <div className="card" style={{ padding: "0.9rem" }}>
           <p className="metaText" style={{ margin: "0 0 0.35rem 0" }}>
             Totale CONFERMATO (pagato)
           </p>
-          <strong>{formatEuro(totals.totaleConfermato)}</strong>
+          <strong>{formatEuro(analytics.totaleConfermato)}</strong>
         </div>
-        <div className="card" style={{ padding: "0.75rem" }}>
+        <div className="card" style={{ padding: "0.9rem" }}>
           <p className="metaText" style={{ margin: "0 0 0.35rem 0" }}>
             Totale DA PAGARE (prenotazioni)
           </p>
-          <strong>{formatEuro(totals.totaleDaPagare)}</strong>
+          <strong>{formatEuro(analytics.totaleDaPagare)}</strong>
         </div>
-        <div className="card" style={{ padding: "0.75rem" }}>
+        <div className="card" style={{ padding: "0.9rem" }}>
           <p className="metaText" style={{ margin: "0 0 0.35rem 0" }}>
             Totale COMPLESSIVO
           </p>
-          <strong>{formatEuro(totals.totaleComplessivo)}</strong>
+          <strong>{formatEuro(analytics.totaleComplessivo)}</strong>
         </div>
-        <div className="card" style={{ padding: "0.75rem" }}>
-          <p className="metaText" style={{ margin: "0 0 0.35rem 0" }}>
-            Totali per categoria
+      </div>
+
+      <div className="card" style={{ padding: "0.85rem", marginBottom: "0.8rem", overflowX: "auto" }}>
+        <p className="metaText" style={{ margin: "0 0 0.5rem 0" }}>
+          Breakdown per categoria
+        </p>
+        <table style={{ width: "100%", borderCollapse: "collapse", minWidth: "420px" }}>
+          <thead>
+            <tr>
+              <th style={{ textAlign: "left", padding: "0.45rem", borderBottom: "1px solid rgba(148, 163, 184, 0.25)" }}>
+                Categoria
+              </th>
+              <th style={{ textAlign: "right", padding: "0.45rem", borderBottom: "1px solid rgba(148, 163, 184, 0.25)" }}>
+                Confermati
+              </th>
+              <th style={{ textAlign: "right", padding: "0.45rem", borderBottom: "1px solid rgba(148, 163, 184, 0.25)" }}>
+                Da pagare
+              </th>
+              <th style={{ textAlign: "right", padding: "0.45rem", borderBottom: "1px solid rgba(148, 163, 184, 0.25)" }}>
+                Totale
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {analytics.visibleCategories.map((category) => (
+              <tr key={`row-${category}`}>
+                <td style={{ padding: "0.45rem", borderBottom: "1px solid rgba(148, 163, 184, 0.12)" }}>
+                  {categoriaLabel(category)}
+                </td>
+                <td
+                  style={{
+                    textAlign: "right",
+                    padding: "0.45rem",
+                    borderBottom: "1px solid rgba(148, 163, 184, 0.12)",
+                  }}
+                >
+                  {formatEuro(analytics.totalsByCategory[category].confirmed)}
+                </td>
+                <td
+                  style={{
+                    textAlign: "right",
+                    padding: "0.45rem",
+                    borderBottom: "1px solid rgba(148, 163, 184, 0.12)",
+                  }}
+                >
+                  {formatEuro(analytics.totalsByCategory[category].unpaid)}
+                </td>
+                <td
+                  style={{
+                    textAlign: "right",
+                    padding: "0.45rem",
+                    borderBottom: "1px solid rgba(148, 163, 184, 0.12)",
+                  }}
+                >
+                  {formatEuro(analytics.totalsByCategory[category].total)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="card" style={{ padding: "0.85rem", marginBottom: "1rem" }}>
+        <p className="metaText" style={{ margin: "0.2rem 0" }}>
+          Quote IO (confermati): {formatEuro(analytics.quotaIoTotale)}
+        </p>
+        <p className="metaText" style={{ margin: "0.2rem 0" }}>
+          Quote LEI (confermati): {formatEuro(analytics.quotaLeiTotale)}
+        </p>
+        {analytics.bookingPaidMissingPayer > 0 && (
+          <p className="metaText" style={{ margin: "0.2rem 0", color: "#fb7185" }}>
+            Prenotazioni pagate senza payer: {analytics.bookingPaidMissingPayer}
           </p>
-          <p className="metaText" style={{ margin: "0.2rem 0" }}>
-            Benzina: {formatEuro(totals.totalsByCategory.BENZINA.confirmed)} confermati |
-            {` ${formatEuro(totals.totalsByCategory.BENZINA.unpaid)} da pagare`} |
-            {` ${formatEuro(totals.totalsByCategory.BENZINA.total)} totale`}
+        )}
+        {analytics.bookingPaidInvalidSplit > 0 && (
+          <p className="metaText" style={{ margin: "0.2rem 0", color: "#fb7185" }}>
+            Prenotazioni pagate con quote DIVISO non coerenti: {analytics.bookingPaidInvalidSplit}
           </p>
-          <p className="metaText" style={{ margin: "0.2rem 0" }}>
-            Hotel: {formatEuro(totals.totalsByCategory.HOTEL.confirmed)} confermati |
-            {` ${formatEuro(totals.totalsByCategory.HOTEL.unpaid)} da pagare`} |
-            {` ${formatEuro(totals.totalsByCategory.HOTEL.total)} totale`}
-          </p>
-          <p className="metaText" style={{ margin: "0.2rem 0" }}>
-            Traghetti: {formatEuro(totals.totalsByCategory.TRAGHETTI.confirmed)} confermati |
-            {` ${formatEuro(totals.totalsByCategory.TRAGHETTI.unpaid)} da pagare`} |
-            {` ${formatEuro(totals.totalsByCategory.TRAGHETTI.total)} totale`}
-          </p>
-          <p className="metaText" style={{ margin: "0.2rem 0" }}>
-            Extra: {formatEuro(totals.totalsByCategory.EXTRA.confirmed)} confermati |
-            {` ${formatEuro(totals.totalsByCategory.EXTRA.unpaid)} da pagare`} |
-            {` ${formatEuro(totals.totalsByCategory.EXTRA.total)} totale`}
-          </p>
-        </div>
-        <div className="card" style={{ padding: "0.75rem" }}>
-          <p className="metaText" style={{ margin: "0 0 0.35rem 0" }}>
-            Quote manuali
-          </p>
-          <p className="metaText" style={{ margin: "0.2rem 0" }}>
-            IO: {formatEuro(totals.totaleIo)}
-          </p>
-          <p className="metaText" style={{ margin: "0.2rem 0" }}>
-            LEI: {formatEuro(totals.totaleLei)}
-          </p>
-          <p className="metaText" style={{ margin: "0.2rem 0" }}>
-            Manuali confermati: {formatEuro(totals.totaleManualiConfermati)}
-          </p>
-          <p className="metaText" style={{ margin: "0.2rem 0" }}>
-            Prenotazioni pagate: {formatEuro(totals.totaleBookingConfermati)}
-          </p>
-        </div>
+        )}
       </div>
 
       {isLoading && <p className="metaText">Caricamento costi...</p>}
       {!isLoading && error && <p className="errorText">{error}</p>}
 
-      {!isLoading && !error && (
-        <>
-          <h3 style={{ margin: "0.5rem 0" }}>Costi manuali (confermati)</h3>
-          {costiManualiFiltrati.length === 0 && <p className="metaText">Nessun costo manuale trovato.</p>}
-          {costiManualiFiltrati.length > 0 && (
-            <ul className="listPlain cardsGrid">
-              {costiManualiFiltrati.map((costo) => {
-                const quote = getQuote(costo);
-                return (
-                  <li key={costo.id} className="card costiCard">
-                    <div className="costiCardHeader">
-                      <span className="badge">{categoriaLabel(costo.categoria)}</span>
-                      <strong>{costo.titolo}</strong>
-                    </div>
-                    <p className="metaText" style={{ margin: "0.25rem 0" }}>
-                      Data: {formatDateWithOra(costo.data, costo.ora)}
-                    </p>
-                    <p className="metaText" style={{ margin: "0.25rem 0" }}>
-                      Importo: {formatEuro(costo.importo)}
-                    </p>
-                    <p className="metaText" style={{ margin: "0.25rem 0" }}>
-                      Quota IO: {formatEuro(quote.quotaIo)} | Quota LEI: {formatEuro(quote.quotaLei)}
-                    </p>
-                    {costo.note && (
+      {!isLoading && !error &&
+        analytics.visibleCategories.map((category) => {
+          const manualItems = analytics.manualByCategory[category];
+          const paidBookingItems = analytics.bookingPaidByCategory[category];
+          const unpaidBookingItems = analytics.bookingUnpaidByCategory[category];
+
+          return (
+            <section key={`group-${category}`} className="card" style={{ padding: "0.9rem", marginBottom: "1rem" }}>
+              <h3 style={{ margin: "0 0 0.55rem 0" }}>{categoriaLabel(category)}</h3>
+
+              <p className="metaText" style={{ margin: "0.3rem 0" }}>
+                Manuali (confermati)
+              </p>
+              {manualItems.length === 0 && <p className="metaText">Nessun costo manuale.</p>}
+              {manualItems.length > 0 && (
+                <ul className="listPlain cardsGrid">
+                  {manualItems.map((costo) => {
+                    const quote = getManualQuote(costo);
+                    return (
+                      <li key={costo.id} className="card costiCard">
+                        <div className="costiCardHeader">
+                          <span className="badge">{categoriaLabel(costo.categoria)}</span>
+                          <strong>{costo.titolo}</strong>
+                        </div>
+                        <p className="metaText" style={{ margin: "0.25rem 0" }}>
+                          Data: {formatDateWithOra(costo.data, costo.ora)}
+                        </p>
+                        <p className="metaText" style={{ margin: "0.25rem 0" }}>
+                          Importo: {formatEuro(costo.importo)}
+                        </p>
+                        <p className="metaText" style={{ margin: "0.25rem 0" }}>
+                          Quota IO: {formatEuro(quote.quotaIo)} | Quota LEI: {formatEuro(quote.quotaLei)}
+                        </p>
+                        {costo.note && (
+                          <p className="metaText" style={{ margin: "0.25rem 0" }}>
+                            Note: {costo.note}
+                          </p>
+                        )}
+                        <div className="costiActions">
+                          <button
+                            type="button"
+                            className="buttonGhost"
+                            onClick={() => {
+                              setEditingCosto(costo);
+                              setIsModalOpen(true);
+                            }}
+                          >
+                            Modifica
+                          </button>
+                          <button type="button" className="buttonGhost" onClick={() => void handleDelete(costo.id)}>
+                            Elimina
+                          </button>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+
+              <p className="metaText" style={{ margin: "0.7rem 0 0.3rem" }}>
+                Prenotazioni pagate (confermate)
+              </p>
+              {paidBookingItems.length === 0 && <p className="metaText">Nessuna prenotazione pagata.</p>}
+              {paidBookingItems.length > 0 && (
+                <ul className="listPlain cardsGrid">
+                  {paidBookingItems.map((booking) => {
+                    const quoteResult = getBookingQuoteResult(booking);
+                    const payerMissing = quoteResult.missingPayer;
+                    const invalidSplit = quoteResult.invalidSplit;
+                    const payerLabel = getPayerBadgeLabel(booking.pagatoDa);
+
+                    return (
+                      <li key={`paid-${booking.id}`} className="card costiCard">
+                        <div className="costiCardHeader">
+                          <span className="badge">{booking.tipo}</span>
+                          <strong>{booking.titolo}</strong>
+                        </div>
+                        <p className="metaText" style={{ margin: "0.25rem 0" }}>
+                          Data: {formatDateWithOra(booking.data, booking.ora)}
+                        </p>
+                        <p className="metaText" style={{ margin: "0.25rem 0" }}>
+                          Importo: {formatEuro(booking.importo)}
+                        </p>
+                        <p className="metaText" style={{ margin: "0.25rem 0", display: "flex", gap: "0.4rem", flexWrap: "wrap" }}>
+                          <span
+                            className="badge"
+                            style={{
+                              borderColor: "rgba(52, 211, 153, 0.6)",
+                              background: "rgba(52, 211, 153, 0.2)",
+                              color: "#34d399",
+                            }}
+                          >
+                            PAGATO
+                          </span>
+                          <span
+                            className="badge"
+                            style={
+                              payerMissing
+                                ? {
+                                    borderColor: "rgba(225, 29, 72, 0.65)",
+                                    background: "rgba(225, 29, 72, 0.2)",
+                                    color: "#fb7185",
+                                  }
+                                : undefined
+                            }
+                          >
+                            {payerLabel}
+                          </span>
+                        </p>
+                        {payerMissing && (
+                          <p className="metaText" style={{ margin: "0.25rem 0", color: "#fb7185" }}>
+                            Payer mancante: costo confermato ma escluso da quote IO/LEI.
+                          </p>
+                        )}
+                        {invalidSplit && (
+                          <p className="metaText" style={{ margin: "0.25rem 0", color: "#fb7185" }}>
+                            Quote DIVISO non coerenti: costo escluso da quote IO/LEI.
+                          </p>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+
+              <p className="metaText" style={{ margin: "0.7rem 0 0.3rem" }}>
+                Prenotazioni da pagare
+              </p>
+              {unpaidBookingItems.length === 0 && <p className="metaText">Nessuna prenotazione da pagare.</p>}
+              {unpaidBookingItems.length > 0 && (
+                <ul className="listPlain cardsGrid">
+                  {unpaidBookingItems.map((booking) => (
+                    <li key={`unpaid-${booking.id}`} className="card costiCard">
+                      <div className="costiCardHeader">
+                        <span className="badge">{booking.tipo}</span>
+                        <strong>{booking.titolo}</strong>
+                      </div>
                       <p className="metaText" style={{ margin: "0.25rem 0" }}>
-                        Note: {costo.note}
+                        Data: {formatDateWithOra(booking.data, booking.ora)}
                       </p>
-                    )}
-                    <div className="costiActions">
-                      <button
-                        type="button"
-                        className="buttonGhost"
-                        onClick={() => {
-                          setEditingCosto(costo);
-                          setIsModalOpen(true);
-                        }}
-                      >
-                        Modifica
-                      </button>
-                      <button type="button" className="buttonGhost" onClick={() => void handleDelete(costo.id)}>
-                        Elimina
-                      </button>
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-
-          <h3 style={{ margin: "1rem 0 0.5rem" }}>Prenotazioni pagate (confermate)</h3>
-          {bookingPaidFiltrati.length === 0 && <p className="metaText">Nessuna prenotazione pagata.</p>}
-          {bookingPaidFiltrati.length > 0 && (
-            <ul className="listPlain cardsGrid">
-              {bookingPaidFiltrati.map((booking) => (
-                <li key={`booking-paid-${booking.id}`} className="card costiCard">
-                  <div className="costiCardHeader">
-                    <span className="badge">{booking.tipo}</span>
-                    <strong>{booking.titolo}</strong>
-                  </div>
-                  <p className="metaText" style={{ margin: "0.25rem 0" }}>
-                    Data: {formatDateWithOra(booking.data, booking.ora)}
-                  </p>
-                  <p className="metaText" style={{ margin: "0.25rem 0" }}>
-                    Importo: {formatEuro(booking.importo)}
-                  </p>
-                  <p className="metaText" style={{ margin: "0.25rem 0" }}>
-                    <span
-                      className="badge"
-                      style={{
-                        borderColor: "rgba(52, 211, 153, 0.6)",
-                        background: "rgba(52, 211, 153, 0.2)",
-                        color: "#34d399",
-                      }}
-                    >
-                      PAGATO
-                    </span>
-                  </p>
-                </li>
-              ))}
-            </ul>
-          )}
-
-          <h3 style={{ margin: "1rem 0 0.5rem" }}>Prenotazioni da pagare</h3>
-          {bookingUnpaidFiltrati.length === 0 && <p className="metaText">Nessuna prenotazione da pagare.</p>}
-          {bookingUnpaidFiltrati.length > 0 && (
-            <ul className="listPlain cardsGrid">
-              {bookingUnpaidFiltrati.map((booking) => (
-                <li key={`booking-unpaid-${booking.id}`} className="card costiCard">
-                  <div className="costiCardHeader">
-                    <span className="badge">{booking.tipo}</span>
-                    <strong>{booking.titolo}</strong>
-                  </div>
-                  <p className="metaText" style={{ margin: "0.25rem 0" }}>
-                    Data: {formatDateWithOra(booking.data, booking.ora)}
-                  </p>
-                  <p className="metaText" style={{ margin: "0.25rem 0" }}>
-                    Importo: {formatEuro(booking.importo)}
-                  </p>
-                  <p className="metaText" style={{ margin: "0.25rem 0" }}>
-                    <span
-                      className="badge"
-                      style={{
-                        borderColor: "rgba(225, 29, 72, 0.65)",
-                        background: "rgba(225, 29, 72, 0.2)",
-                        color: "#fb7185",
-                      }}
-                    >
-                      DA PAGARE
-                    </span>
-                  </p>
-                </li>
-              ))}
-            </ul>
-          )}
-        </>
-      )}
+                      <p className="metaText" style={{ margin: "0.25rem 0" }}>
+                        Importo: {formatEuro(booking.importo)}
+                      </p>
+                      <p className="metaText" style={{ margin: "0.25rem 0", display: "flex", gap: "0.4rem", flexWrap: "wrap" }}>
+                        <span
+                          className="badge"
+                          style={{
+                            borderColor: "rgba(225, 29, 72, 0.65)",
+                            background: "rgba(225, 29, 72, 0.2)",
+                            color: "#fb7185",
+                          }}
+                        >
+                          DA PAGARE
+                        </span>
+                        <span
+                          className="badge"
+                          style={
+                            booking.pagatoDa
+                              ? undefined
+                              : {
+                                  borderColor: "rgba(225, 29, 72, 0.65)",
+                                  background: "rgba(225, 29, 72, 0.2)",
+                                  color: "#fb7185",
+                                }
+                          }
+                        >
+                          {getPayerBadgeLabel(booking.pagatoDa)}
+                        </span>
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          );
+        })}
 
       <CostoFormModal
         isOpen={isModalOpen}

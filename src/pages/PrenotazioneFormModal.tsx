@@ -45,6 +45,9 @@ interface PrenotazioneFormState {
   costoTotale: string;
   caparra: string;
   pagato: boolean;
+  pagatoDa: "" | "IO" | "LEI" | "DIVISO";
+  quotaIo: string;
+  quotaLei: string;
   note: string;
 }
 
@@ -67,6 +70,13 @@ function stringOrEmpty(value?: string): string {
 
 function numberToString(value?: number): string {
   return typeof value === "number" && Number.isFinite(value) ? String(value) : "";
+}
+
+function toPagatoDaOption(value?: Prenotazione["pagatoDa"]): "" | "IO" | "LEI" | "DIVISO" {
+  if (value === "IO" || value === "LEI" || value === "DIVISO") {
+    return value;
+  }
+  return "";
 }
 
 function buildInitialState(prenotazione?: Prenotazione | null): PrenotazioneFormState {
@@ -103,6 +113,9 @@ function buildInitialState(prenotazione?: Prenotazione | null): PrenotazioneForm
     costoTotale: numberToString(prenotazione?.costoTotale),
     caparra: numberToString(prenotazione?.caparra),
     pagato: prenotazione?.pagato ?? false,
+    pagatoDa: toPagatoDaOption(prenotazione?.pagatoDa),
+    quotaIo: numberToString(prenotazione?.quotaIo),
+    quotaLei: numberToString(prenotazione?.quotaLei),
     note: stringOrEmpty(prenotazione?.note),
   };
 }
@@ -203,6 +216,9 @@ export default function PrenotazioneFormModal({
     return initialPrenotazione ? "Modifica prenotazione" : "Nuova prenotazione";
   }, [initialPrenotazione]);
 
+  const costoTotaleNumber = useMemo(() => toOptionalNumber(form.costoTotale), [form.costoTotale]);
+  const showPaymentSection = typeof costoTotaleNumber === "number" && costoTotaleNumber > 0;
+
   if (!isOpen) {
     return null;
   }
@@ -229,6 +245,30 @@ export default function PrenotazioneFormModal({
     if (dataFineIso && Date.parse(dataFineIso) < Date.parse(dataInizioIso)) {
       setError("La data fine non puo' essere precedente alla data inizio.");
       return;
+    }
+
+    const costoTotale = toOptionalNumber(form.costoTotale);
+    const caparra = toOptionalNumber(form.caparra);
+    const hasCostoTotale = typeof costoTotale === "number" && costoTotale > 0;
+    const pagatoDa =
+      hasCostoTotale && form.pagatoDa ? (form.pagatoDa as "IO" | "LEI" | "DIVISO") : undefined;
+    let quotaIo: number | undefined;
+    let quotaLei: number | undefined;
+
+    if (pagatoDa === "DIVISO") {
+      quotaIo = toOptionalNumber(form.quotaIo);
+      quotaLei = toOptionalNumber(form.quotaLei);
+
+      if (typeof quotaIo !== "number" || typeof quotaLei !== "number") {
+        setError("Per pagamento DIVISO devi indicare Quota IO e Quota LEI.");
+        return;
+      }
+
+      const delta = Math.abs(quotaIo + quotaLei - costoTotale);
+      if (delta > 0.01) {
+        setError("Quota IO + Quota LEI deve essere uguale al costo totale.");
+        return;
+      }
     }
 
     setIsSaving(true);
@@ -273,9 +313,12 @@ export default function PrenotazioneFormModal({
         email: toOptionalString(form.email),
         telefono: toOptionalString(form.telefono),
         valuta: "EUR",
-        costoTotale: toOptionalNumber(form.costoTotale),
-        caparra: toOptionalNumber(form.caparra),
-        pagato: form.pagato,
+        costoTotale,
+        caparra,
+        pagato: hasCostoTotale ? form.pagato : undefined,
+        pagatoDa,
+        quotaIo: pagatoDa === "DIVISO" ? quotaIo : undefined,
+        quotaLei: pagatoDa === "DIVISO" ? quotaLei : undefined,
         note: toOptionalString(form.note),
         createdAt: initialPrenotazione?.createdAt ?? nowIso,
         updatedAt: nowIso,
@@ -585,14 +628,65 @@ export default function PrenotazioneFormModal({
             placeholder="Caparra (EUR)"
             onChange={(event) => setForm((current) => ({ ...current, caparra: event.target.value }))}
           />
-          <label className="prenCheckbox prenColSpan2">
-            <input
-              type="checkbox"
-              checked={form.pagato}
-              onChange={(event) => setForm((current) => ({ ...current, pagato: event.target.checked }))}
-            />
-            Pagato
-          </label>
+
+          {showPaymentSection && (
+            <>
+              <p className="prenSectionTitle prenColSpan2">Pagamento</p>
+              <select
+                className="inputField"
+                value={form.pagatoDa}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    pagatoDa: event.target.value as "" | "IO" | "LEI" | "DIVISO",
+                  }))
+                }
+              >
+                <option value="">Pagato da (non impostato)</option>
+                <option value="IO">IO</option>
+                <option value="LEI">LEI</option>
+                <option value="DIVISO">DIVISO</option>
+              </select>
+              <label className="prenCheckbox">
+                <input
+                  type="checkbox"
+                  checked={form.pagato}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, pagato: event.target.checked }))
+                  }
+                />
+                Pagato
+              </label>
+
+              {form.pagatoDa === "DIVISO" && (
+                <>
+                  <input
+                    className="inputField"
+                    type="number"
+                    step="0.01"
+                    min={0}
+                    value={form.quotaIo}
+                    placeholder="Quota IO (EUR)"
+                    onChange={(event) =>
+                      setForm((current) => ({ ...current, quotaIo: event.target.value }))
+                    }
+                  />
+                  <input
+                    className="inputField"
+                    type="number"
+                    step="0.01"
+                    min={0}
+                    value={form.quotaLei}
+                    placeholder="Quota LEI (EUR)"
+                    onChange={(event) =>
+                      setForm((current) => ({ ...current, quotaLei: event.target.value }))
+                    }
+                  />
+                </>
+              )}
+            </>
+          )}
+
           <textarea
             className="inputField prenColSpan2"
             rows={4}

@@ -44,6 +44,9 @@ export interface Prenotazione {
   costoTotale?: number;
   caparra?: number;
   pagato?: boolean;
+  pagatoDa?: "IO" | "LEI" | "DIVISO";
+  quotaIo?: number;
+  quotaLei?: number;
 
   note?: string;
 

@@ -82,6 +82,9 @@ Data aggiornamento: 21 02 2026
 - `costoTotale?: number`
 - `caparra?: number`
 - `pagato?: boolean`
+- `pagatoDa?: "IO" | "LEI" | "DIVISO"`
+- `quotaIo?: number`
+- `quotaLei?: number`
 - `note?: string`
 - `createdAt: string`
 - `updatedAt: string`
