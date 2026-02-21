@@ -16,12 +16,27 @@ import {
   getGPXFilesByGiorno,
   getPrenotazione,
   getTrackPointsByGiorno,
+  saveGiorno,
 } from "../services/storage";
 import "../styles/theme.css";
 
 interface GiornoDettaglioProps {
   giornoId: string;
   onBack: () => void;
+}
+
+interface RouteApiSuccessResponse {
+  ok: true;
+  modeRequested: "direct" | "curvy";
+  modeApplied: "direct" | "curvy";
+  distanceKm: number;
+  durationMin: number;
+  geometry: Array<{ lat: number; lon: number }>;
+}
+
+interface RouteApiErrorResponse {
+  ok: false;
+  error?: string;
 }
 
 const dateFormatter = new Intl.DateTimeFormat("it-IT", {
@@ -68,6 +83,80 @@ function formatGapDuration(durationSec: number): string {
   return `${totalMinutes} min`;
 }
 
+function parseCoordinate(value: string, kind: "lat" | "lon"): number | null {
+  const parsed = Number.parseFloat(value);
+  if (!Number.isFinite(parsed)) {
+    return null;
+  }
+
+  if (kind === "lat") {
+    return parsed >= -90 && parsed <= 90 ? parsed : null;
+  }
+
+  return parsed >= -180 && parsed <= 180 ? parsed : null;
+}
+
+function isRouteApiSuccessResponse(value: unknown): value is RouteApiSuccessResponse {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+
+  const record = value as {
+    ok?: unknown;
+    modeRequested?: unknown;
+    modeApplied?: unknown;
+    distanceKm?: unknown;
+    durationMin?: unknown;
+    geometry?: unknown;
+  };
+
+  if (record.ok !== true) {
+    return false;
+  }
+
+  if (
+    (record.modeRequested !== "direct" && record.modeRequested !== "curvy") ||
+    (record.modeApplied !== "direct" && record.modeApplied !== "curvy")
+  ) {
+    return false;
+  }
+
+  if (
+    typeof record.distanceKm !== "number" ||
+    !Number.isFinite(record.distanceKm) ||
+    typeof record.durationMin !== "number" ||
+    !Number.isFinite(record.durationMin)
+  ) {
+    return false;
+  }
+
+  if (!Array.isArray(record.geometry) || record.geometry.length < 2) {
+    return false;
+  }
+
+  for (const point of record.geometry) {
+    if (typeof point !== "object" || point === null) {
+      return false;
+    }
+    const lat = (point as { lat?: unknown }).lat;
+    const lon = (point as { lon?: unknown }).lon;
+    if (
+      typeof lat !== "number" ||
+      !Number.isFinite(lat) ||
+      lat < -90 ||
+      lat > 90 ||
+      typeof lon !== "number" ||
+      !Number.isFinite(lon) ||
+      lon < -180 ||
+      lon > 180
+    ) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioProps) {
   const [giorno, setGiorno] = useState<Giorno | null>(null);
   const [hotelPrenotazione, setHotelPrenotazione] = useState<Prenotazione | null>(null);
@@ -78,6 +167,12 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
   const [endLocation, setEndLocation] = useState<string>("N/D");
   const [isResolvingLocations, setIsResolvingLocations] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+  const [isGeneratingRoute, setIsGeneratingRoute] = useState(false);
+  const [routeMode, setRouteMode] = useState<"direct" | "curvy">("direct");
+  const [originLat, setOriginLat] = useState("");
+  const [originLon, setOriginLon] = useState("");
+  const [destinationLat, setDestinationLat] = useState("");
+  const [destinationLon, setDestinationLon] = useState("");
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -140,6 +235,21 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
     };
   }, [giornoId]);
 
+  useEffect(() => {
+    const geometry = giorno?.plannedRoute?.geometry;
+    if (!geometry || geometry.length < 2) {
+      return;
+    }
+
+    const firstPoint = geometry[0];
+    const lastPoint = geometry[geometry.length - 1];
+    setOriginLat(firstPoint.lat.toString());
+    setOriginLon(firstPoint.lon.toString());
+    setDestinationLat(lastPoint.lat.toString());
+    setDestinationLon(lastPoint.lon.toString());
+    setRouteMode(giorno.plannedRoute.modeRequested);
+  }, [giorno]);
+
   async function handleImport(event: ChangeEvent<HTMLInputElement>): Promise<void> {
     const file = event.target.files?.[0];
     if (!file) {
@@ -175,6 +285,81 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
     } catch (deleteError) {
       const message = deleteError instanceof Error ? deleteError.message : "Errore cancellazione GPX";
       setError(message);
+    }
+  }
+
+  async function handleGeneratePlannedRoute(): Promise<void> {
+    if (!giorno) {
+      setError("Dati giorno non disponibili.");
+      return;
+    }
+
+    const origin = {
+      lat: parseCoordinate(originLat, "lat"),
+      lon: parseCoordinate(originLon, "lon"),
+    };
+    const destination = {
+      lat: parseCoordinate(destinationLat, "lat"),
+      lon: parseCoordinate(destinationLon, "lon"),
+    };
+
+    if (
+      origin.lat === null ||
+      origin.lon === null ||
+      destination.lat === null ||
+      destination.lon === null
+    ) {
+      setError("Inserisci coordinate valide per origine e destinazione.");
+      return;
+    }
+
+    setIsGeneratingRoute(true);
+    setError(null);
+
+    try {
+      const response = await fetch("/api/route", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          origin: { lat: origin.lat, lon: origin.lon },
+          destination: { lat: destination.lat, lon: destination.lon },
+          mode: routeMode,
+        }),
+      });
+
+      const payload = (await response.json()) as RouteApiSuccessResponse | RouteApiErrorResponse;
+
+      if (!response.ok || !isRouteApiSuccessResponse(payload)) {
+        const message =
+          typeof (payload as RouteApiErrorResponse).error === "string"
+            ? (payload as RouteApiErrorResponse).error
+            : "Errore generazione route";
+        throw new Error(message);
+      }
+
+      const nextGiorno: Giorno = {
+        ...giorno,
+        plannedRoute: {
+          engine: "osrm",
+          modeRequested: payload.modeRequested,
+          modeApplied: payload.modeApplied,
+          distanceKm: payload.distanceKm,
+          durationMin: payload.durationMin,
+          geometry: payload.geometry,
+          createdAt: new Date().toISOString(),
+        },
+      };
+
+      await saveGiorno(nextGiorno);
+      setGiorno(nextGiorno);
+    } catch (routeError) {
+      const message =
+        routeError instanceof Error ? routeError.message : "Errore generazione route";
+      setError(message);
+    } finally {
+      setIsGeneratingRoute(false);
     }
   }
 
@@ -306,26 +491,106 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
         </div>
 
         <div className="card detailCard" style={{ marginBottom: "1rem" }}>
-          <h2 style={{ margin: "0 0 0.6rem 0" }}>Pianificazione Google Maps</h2>
-          {giorno?.plannedMapsUrl ? (
+          <h2 style={{ margin: "0 0 0.6rem 0" }}>Pianificazione</h2>
+          <p className="metaText" style={{ margin: "0 0 0.6rem 0" }}>
+            Routing locale OSRM (test con coordinate manuali).
+          </p>
+          <div
+            style={{
+              display: "grid",
+              gap: "0.55rem",
+              gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
+              marginBottom: "0.7rem",
+            }}
+          >
+            <input
+              type="number"
+              className="inputField"
+              value={originLat}
+              onChange={(event) => setOriginLat(event.target.value)}
+              placeholder="Origine lat"
+            />
+            <input
+              type="number"
+              className="inputField"
+              value={originLon}
+              onChange={(event) => setOriginLon(event.target.value)}
+              placeholder="Origine lon"
+            />
+            <input
+              type="number"
+              className="inputField"
+              value={destinationLat}
+              onChange={(event) => setDestinationLat(event.target.value)}
+              placeholder="Destinazione lat"
+            />
+            <input
+              type="number"
+              className="inputField"
+              value={destinationLon}
+              onChange={(event) => setDestinationLon(event.target.value)}
+              placeholder="Destinazione lon"
+            />
+            <select
+              className="inputField"
+              value={routeMode}
+              onChange={(event) => setRouteMode(event.target.value as "direct" | "curvy")}
+            >
+              <option value="direct">Direct</option>
+              <option value="curvy">Curvy</option>
+            </select>
+          </div>
+          <button
+            type="button"
+            onClick={() => void handleGeneratePlannedRoute()}
+            className="buttonPrimary"
+            disabled={isGeneratingRoute}
+          >
+            {isGeneratingRoute ? "Generazione..." : "Genera percorso"}
+          </button>
+
+          {giorno?.plannedRoute && (
             <>
-              <p className="metaText" style={{ margin: "0 0 0.6rem 0" }}>
-                Pianificazione salvata per questo giorno.
-              </p>
-              <button type="button" onClick={handleOpenPlannedMap} className="buttonPrimary">
-                VAI (Google Maps)
-              </button>
-            </>
-          ) : (
-            <>
-              <p className="metaText" style={{ margin: "0 0 0.6rem 0" }}>
-                Nessun link pianificazione impostato.
-              </p>
-              <button type="button" onClick={onBack} className="buttonGhost">
-                Aggiungi pianificazione
-              </button>
+              <div style={{ marginTop: "0.75rem", marginBottom: "0.6rem" }}>
+                <p className="metaText" style={{ margin: "0 0 0.25rem 0" }}>
+                  Mode richiesto: {giorno.plannedRoute.modeRequested}
+                </p>
+                <p className="metaText" style={{ margin: "0 0 0.25rem 0" }}>
+                  Mode applicato: {giorno.plannedRoute.modeApplied}
+                </p>
+                <p className="metaText" style={{ margin: "0 0 0.25rem 0" }}>
+                  Distanza stimata: {giorno.plannedRoute.distanceKm.toFixed(2)} km
+                </p>
+                <p className="metaText" style={{ margin: 0 }}>
+                  Durata stimata: {giorno.plannedRoute.durationMin.toFixed(1)} min
+                </p>
+              </div>
+              <DayMap segments={[giorno.plannedRoute.geometry]} />
             </>
           )}
+
+          <div style={{ borderTop: "1px solid #2A3445", marginTop: "0.9rem", paddingTop: "0.75rem" }}>
+            <h3 style={{ margin: "0 0 0.45rem 0", fontSize: "1rem" }}>Google Maps directions</h3>
+            {giorno?.plannedMapsUrl ? (
+              <>
+                <p className="metaText" style={{ margin: "0 0 0.6rem 0" }}>
+                  Pianificazione Google Maps salvata per questo giorno.
+                </p>
+                <button type="button" onClick={handleOpenPlannedMap} className="buttonPrimary">
+                  VAI (Google Maps)
+                </button>
+              </>
+            ) : (
+              <>
+                <p className="metaText" style={{ margin: "0 0 0.6rem 0" }}>
+                  Nessun link pianificazione impostato.
+                </p>
+                <button type="button" onClick={onBack} className="buttonGhost">
+                  Aggiungi pianificazione
+                </button>
+              </>
+            )}
+          </div>
         </div>
 
         {hotelPrenotazione && (

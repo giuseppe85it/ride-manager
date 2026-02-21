@@ -26,6 +26,7 @@ Data aggiornamento: 21 02 2026
 - `note?: string`
 - `hotelPrenotazioneId?: string`
 - `plannedMapsUrl?: string`
+- `plannedRoute?: PlannedRoute`
 - `createdAt: string`
 ### GPXFile (`src/models/GPXFile.ts`)
 - `id: string`

@@ -69,6 +69,10 @@ function isGiornoStato(value: unknown): value is Giorno["stato"] {
   return typeof value === "string" && GIORNO_STATI.includes(value as Giorno["stato"]);
 }
 
+function isPlannedRouteMode(value: unknown): value is "direct" | "curvy" {
+  return value === "direct" || value === "curvy";
+}
+
 function isPrenotazioneTipo(value: unknown): value is PrenotazioneTipo {
   return value === "HOTEL" || value === "TRAGHETTO";
 }
@@ -120,6 +124,94 @@ function toOptionalBoolean(value: unknown): boolean | undefined {
   return typeof value === "boolean" ? value : undefined;
 }
 
+function normalizePlannedRoute(value: unknown): Giorno["plannedRoute"] | undefined {
+  if (typeof value !== "object" || value === null) {
+    return undefined;
+  }
+
+  const record = value as {
+    engine?: unknown;
+    modeRequested?: unknown;
+    modeApplied?: unknown;
+    distanceKm?: unknown;
+    durationMin?: unknown;
+    geometry?: unknown;
+    createdAt?: unknown;
+  };
+
+  if (record.engine !== "osrm") {
+    return undefined;
+  }
+
+  if (!isPlannedRouteMode(record.modeRequested) || !isPlannedRouteMode(record.modeApplied)) {
+    return undefined;
+  }
+
+  if (
+    typeof record.distanceKm !== "number" ||
+    !Number.isFinite(record.distanceKm) ||
+    record.distanceKm < 0
+  ) {
+    return undefined;
+  }
+
+  if (
+    typeof record.durationMin !== "number" ||
+    !Number.isFinite(record.durationMin) ||
+    record.durationMin < 0
+  ) {
+    return undefined;
+  }
+
+  if (!Array.isArray(record.geometry)) {
+    return undefined;
+  }
+
+  const geometry: { lat: number; lon: number }[] = [];
+  for (const point of record.geometry) {
+    if (typeof point !== "object" || point === null) {
+      return undefined;
+    }
+
+    const lat = (point as { lat?: unknown }).lat;
+    const lon = (point as { lon?: unknown }).lon;
+
+    if (
+      typeof lat !== "number" ||
+      !Number.isFinite(lat) ||
+      lat < -90 ||
+      lat > 90 ||
+      typeof lon !== "number" ||
+      !Number.isFinite(lon) ||
+      lon < -180 ||
+      lon > 180
+    ) {
+      return undefined;
+    }
+
+    geometry.push({ lat, lon });
+  }
+
+  if (geometry.length < 2) {
+    return undefined;
+  }
+
+  const createdAt = toValidIso(record.createdAt);
+  if (!createdAt) {
+    return undefined;
+  }
+
+  return {
+    engine: "osrm",
+    modeRequested: record.modeRequested,
+    modeApplied: record.modeApplied,
+    distanceKm: record.distanceKm,
+    durationMin: record.durationMin,
+    geometry,
+    createdAt,
+  };
+}
+
 function normalizeViaggio(record: LegacyViaggioRecord): Viaggio {
   const nome =
     typeof record.nome === "string"
@@ -158,6 +250,7 @@ function normalizeGiorno(record: LegacyGiornoRecord): Giorno {
     note: typeof record.note === "string" ? record.note : undefined,
     hotelPrenotazioneId: toOptionalString(record.hotelPrenotazioneId),
     plannedMapsUrl: toOptionalString(record.plannedMapsUrl),
+    plannedRoute: normalizePlannedRoute(record.plannedRoute),
     createdAt:
       typeof record.createdAt === "string" && record.createdAt
         ? record.createdAt
