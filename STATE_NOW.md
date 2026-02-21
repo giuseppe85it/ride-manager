@@ -1,11 +1,72 @@
-# STATE NOW
+# STATE_NOW — RideManager (Gestione Viaggi Moto)
+Data aggiornamento: 21 02 2026
 
-- Last update: 2026-02-19 22:23:32
-- Last commit: 41afad9d3ff2c4ee1cfacce81b56cae7cc6dd91f
-- Last message: AGGIORNAMENTO 1.0
-- Last report: docs/ops-log/2026-02-19_22-23_1.md
-- Last changed files:
-  - CHANGELOG.md
-  - STATE_NOW.md
-  - docs/ops-log/2026-02-19_22-23.md
-  - ops.log
+## 1) Stack e vincoli
+- Frontend: React + TypeScript (Vite) con navigazione a stato locale in `src/App.tsx` (senza router).
+- Persistenza locale: IndexedDB via `src/services/storage.ts`.
+- Mappa: Leaflet/React-Leaflet (`src/components/DayMap.tsx`, CSS import in `src/App.tsx`).
+- Vincoli implementati nel codice:
+  - nessun backend/cloud;
+  - import GPX basato solo su dati reali del file;
+  - niente interpolazione punti mancanti;
+  - segmentazione traccia su gap temporali per evitare linee false.
+
+## 2) Data model attuale (verificato dal codice)
+- Viaggio (`src/models/Viaggio.ts`):
+  - `id`, `nome`, `dataInizio`, `dataFine`, `area`, `valuta: "EUR"`, `stato`, `note?`, `createdAt`.
+- Giorno (`src/models/Giorno.ts`):
+  - `id`, `viaggioId`, `data`, `titolo`, `stato`, `note?`, `createdAt`.
+- GPXFile (`src/models/GPXFile.ts`):
+  - `id`, `giornoId`, `kind`, `name`, `uri`, `source: "bmw"`, `startTime`, `endTime`, `durationMin`, `pointsCount`, `createdAt`.
+- TrackPoint (`src/models/TrackPoint.ts`):
+  - `id?`, `gpxFileId`, `giornoId`, `pointIndex`, `lat`, `lon`, `time`, `elevation`.
+- Prenotazione (`src/models/Prenotazione.ts`):
+  - `id`, `viaggioId`, `giornoId?`, `tipo`, `stato`, campi comuni (titolo/date/orari/contatti/costi), campi hotel/traghetto, `valuta: "EUR"`, `createdAt`, `updatedAt`.
+- Relazioni:
+  - Viaggio -> Giorni (`Giorno.viaggioId`)
+  - Giorno -> GPXFiles (`GPXFile.giornoId`)
+  - GPXFile -> TrackPoints (`TrackPoint.gpxFileId`)
+  - Giorno -> TrackPoints (`TrackPoint.giornoId`)
+  - Viaggio/Giorno -> Prenotazioni (`Prenotazione.viaggioId`, `Prenotazione.giornoId?`)
+
+## 3) Feature: FATTO (verificato)
+- Home dashboard + navigazione app senza router (`src/App.tsx`, `src/pages/Home.tsx`).
+- CRUD Viaggi con menu azioni card (modifica/elimina/duplica) (`src/pages/Viaggi.tsx`, `src/pages/Viaggi.css`).
+- Delete cascata viaggio (viaggio + giorni + GPX + trackpoints + prenotazioni) (`deleteViaggioCascade` in `src/services/storage.ts`).
+- CRUD Giorni con stato e cancellazione cascata del giorno (`src/pages/Giorni.tsx`, `src/services/storage.ts`).
+- Import GPX BMW reale (`lat/lon/ele/time`) e salvataggio summary + punti (`src/services/gpxService.ts`, `src/services/storage.ts`).
+- Mappa giorno multi-segmento da punti reali (`src/components/DayMap.tsx`, `src/pages/GiornoDettaglio.tsx`).
+- Calcolo km reali giorno da trackpoints (`src/utils/geo.ts`, `src/pages/GiornoDettaglio.tsx`).
+- Rilevazione gap GPS e warning "Traccia incompleta" (`src/utils/trackSegmentation.ts`, `src/pages/GiornoDettaglio.tsx`).
+- Reverse geocoding inizio/fine con cache locale (`src/services/geocodeService.ts`, `src/pages/GiornoDettaglio.tsx`).
+- Dashboard Viaggio read-only con aggregazioni reali (`src/services/tripStats.ts`, tab Dashboard in `src/pages/DettaglioViaggio.tsx`).
+- Prenotazioni HOTEL/TRAGHETTO con filtri/ricerca/CRUD (`src/pages/PrenotazioniViaggio.tsx`, `src/pages/PrenotazioneFormModal.tsx`, `src/services/storage.ts`).
+
+## 4) Feature: IN CORSO / PLACEHOLDER
+- In Home restano placeholder "In arrivo": Import GPX rapido, Impostazioni, Backup/Export (`src/pages/Home.tsx`).
+- In Dettaglio Viaggio restano placeholder tab Costi e Media (`src/pages/DettaglioViaggio.tsx`).
+
+## 5) TODO ordinata (prossimi step)
+1. Completare tab Costi con tracking spese reali e riepiloghi per viaggio/giorno (`src/pages/DettaglioViaggio.tsx`).
+2. Completare tab Media con allegati/asset del viaggio (`src/pages/DettaglioViaggio.tsx`).
+3. Implementare Backup/Restore JSON locale dalla Home (voce oggi placeholder in `src/pages/Home.tsx`).
+4. Implementare Import GPX rapido dalla Home (voce oggi placeholder in `src/pages/Home.tsx`).
+5. Rafforzare performance storage su dataset grandi (query oggi prevalentemente `getAll + filter` in `src/services/storage.ts`).
+
+## 6) Percorso utente (UI map)
+- Home (`src/pages/Home.tsx`) -> click "Viaggi".
+- Lista Viaggi (`src/pages/Viaggi.tsx`) -> apri viaggio.
+- Dettaglio Viaggio (`src/pages/DettaglioViaggio.tsx`) con tab:
+  - Giorni (`src/pages/Giorni.tsx`) -> apri giorno.
+  - Prenotazioni (`src/pages/PrenotazioniViaggio.tsx`).
+  - Dashboard (`src/services/tripStats.ts` + render in `src/pages/DettaglioViaggio.tsx`).
+  - Costi/Media: placeholder.
+- Giorno Dettaglio (`src/pages/GiornoDettaglio.tsx`) -> import/cancella GPX, mappa, km, gap GPS, luoghi inizio/fine.
+
+## 7) Note tecniche / rischi
+- Storage usa IndexedDB con store multipli e normalizzazione record legacy; molte letture filtrano client-side (`getAll + filter`) e possono crescere di costo con dati ampi (`src/services/storage.ts`).
+- `DB_VERSION` corrente: 5 (`src/services/storage.ts`); ogni modifica schema richiede migrazione attenta in `onupgradeneeded`.
+- Segmentazione traccia usa soglia temporale fissa (60s): utile per gap reali, ma è un parametro da rendere configurabile in futuro (`src/utils/trackSegmentation.ts`).
+
+Ultima verifica TypeScript: ok (`npx tsc --noEmit`)
+Patch: solo creazione/aggiornamento STATE_NOW.md
