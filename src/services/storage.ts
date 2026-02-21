@@ -156,6 +156,8 @@ function normalizeGiorno(record: LegacyGiornoRecord): Giorno {
     titolo: typeof record.titolo === "string" ? record.titolo : "",
     stato: isGiornoStato(record.stato) ? record.stato : DEFAULT_GIORNO_STATO,
     note: typeof record.note === "string" ? record.note : undefined,
+    hotelPrenotazioneId: toOptionalString(record.hotelPrenotazioneId),
+    plannedMapsUrl: toOptionalString(record.plannedMapsUrl),
     createdAt:
       typeof record.createdAt === "string" && record.createdAt
         ? record.createdAt
@@ -408,6 +410,20 @@ export async function getGiorniByViaggio(viaggioId: string): Promise<Giorno[]> {
   return giorni
     .map((giorno) => normalizeGiorno(giorno))
     .filter((giorno) => giorno.viaggioId === viaggioId);
+}
+
+export async function getGiorno(giornoId: string): Promise<Giorno | undefined> {
+  const db = await initDB();
+  const transaction = db.transaction(STORE_GIORNI, "readonly");
+  const request = transaction.objectStore(STORE_GIORNI).get(giornoId);
+  const rawRecord = await requestToPromise(request);
+  await transactionToPromise(transaction);
+
+  if (!rawRecord) {
+    return undefined;
+  }
+
+  return normalizeGiorno(rawRecord as LegacyGiornoRecord);
 }
 
 export async function saveGPXFile(gpxFile: GPXFile): Promise<void> {

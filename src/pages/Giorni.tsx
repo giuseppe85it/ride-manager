@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import type { Giorno } from "../models/Giorno";
+import type { Prenotazione } from "../models/Prenotazione";
 import {
   deleteGiorno,
   deleteGpxFilesByGiornoId,
   deleteTrackPointsByGiornoId,
   getGiorniByViaggio,
+  getPrenotazioniByViaggio,
   saveGiorno,
 } from "../services/storage";
 import "../styles/theme.css";
@@ -47,6 +49,9 @@ export default function Giorni({ viaggioId, onBack, onOpenGiorno, embedded = fal
   const [data, setData] = useState(todayDate());
   const [titolo, setTitolo] = useState("");
   const [stato, setStato] = useState<Giorno["stato"]>("PIANIFICATO");
+  const [hotelPrenotazioneId, setHotelPrenotazioneId] = useState("");
+  const [plannedMapsUrl, setPlannedMapsUrl] = useState("");
+  const [hotelOptions, setHotelOptions] = useState<Prenotazione[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -59,9 +64,13 @@ export default function Giorni({ viaggioId, onBack, onOpenGiorno, embedded = fal
 
     async function loadGiorni(): Promise<void> {
       try {
-        const records = await fetchGiorniByViaggio(viaggioId);
+        const [records, prenotazioni] = await Promise.all([
+          fetchGiorniByViaggio(viaggioId),
+          getPrenotazioniByViaggio(viaggioId),
+        ]);
         if (isActive) {
           setGiorni(records);
+          setHotelOptions(prenotazioni.filter((prenotazione) => prenotazione.tipo === "HOTEL"));
         }
       } catch (loadError) {
         if (isActive) {
@@ -85,12 +94,20 @@ export default function Giorni({ viaggioId, onBack, onOpenGiorno, embedded = fal
       return;
     }
 
+    const plannedMapsUrlTrimmed = plannedMapsUrl.trim();
+    if (plannedMapsUrlTrimmed && !plannedMapsUrlTrimmed.toLowerCase().startsWith("http")) {
+      setError("Il link Google Maps deve iniziare con http.");
+      return;
+    }
+
     const nuovoGiorno: Giorno = {
       id: generateId(),
       viaggioId,
       data,
       titolo: titolo.trim(),
       stato,
+      hotelPrenotazioneId: hotelPrenotazioneId || undefined,
+      plannedMapsUrl: plannedMapsUrlTrimmed || undefined,
       createdAt: new Date().toISOString(),
     };
 
@@ -101,6 +118,8 @@ export default function Giorni({ viaggioId, onBack, onOpenGiorno, embedded = fal
       setData(todayDate());
       setTitolo("");
       setStato("PIANIFICATO");
+      setHotelPrenotazioneId("");
+      setPlannedMapsUrl("");
       setShowForm(false);
       setError(null);
     } catch (saveError) {
@@ -168,6 +187,26 @@ export default function Giorni({ viaggioId, onBack, onOpenGiorno, embedded = fal
                 <option value="IN_CORSO">In corso</option>
                 <option value="FATTO">Fatto</option>
               </select>
+              <select
+                value={hotelPrenotazioneId}
+                onChange={(event) => setHotelPrenotazioneId(event.target.value)}
+                className="inputField"
+              >
+                <option value="">Hotel del giorno (opzionale)</option>
+                {hotelOptions.map((hotel) => (
+                  <option key={hotel.id} value={hotel.id}>
+                    {hotel.titolo}
+                    {hotel.localita ? ` - ${hotel.localita}` : ""}
+                  </option>
+                ))}
+              </select>
+              <input
+                type="url"
+                value={plannedMapsUrl}
+                onChange={(event) => setPlannedMapsUrl(event.target.value)}
+                placeholder="Link pianificazione Google Maps"
+                className="inputField"
+              />
             </div>
             <div style={{ marginTop: "0.8rem" }}>
               <button type="button" onClick={() => void handleNuovoGiorno()} className="buttonPrimary">

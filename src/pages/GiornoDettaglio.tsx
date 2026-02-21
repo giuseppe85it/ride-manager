@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
+import type { Giorno } from "../models/Giorno";
 import type { GPXFile } from "../models/GPXFile";
+import type { Prenotazione } from "../models/Prenotazione";
 import type { TrackPoint } from "../models/TrackPoint";
 import DayMap from "../components/DayMap";
 import { reverseGeocode } from "../services/geocodeService";
@@ -10,7 +12,9 @@ import { splitTrackIntoSegments } from "../utils/trackSegmentation";
 import {
   deleteGPXFile,
   deleteTrackPointsByGpxFileId,
+  getGiorno,
   getGPXFilesByGiorno,
+  getPrenotazione,
   getTrackPointsByGiorno,
 } from "../services/storage";
 import "../styles/theme.css";
@@ -65,6 +69,8 @@ function formatGapDuration(durationSec: number): string {
 }
 
 export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioProps) {
+  const [giorno, setGiorno] = useState<Giorno | null>(null);
+  const [hotelPrenotazione, setHotelPrenotazione] = useState<Prenotazione | null>(null);
   const [gpxFiles, setGpxFiles] = useState<GPXFile[]>([]);
   const [trackPoints, setTrackPoints] = useState<TrackPoint[]>([]);
   const [showAllGaps, setShowAllGaps] = useState(false);
@@ -76,10 +82,19 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   async function reloadDataForDay(targetGiornoId: string): Promise<void> {
-    const [gpxRecords, pointRecords] = await Promise.all([
+    const [gpxRecords, pointRecords, giornoRecord] = await Promise.all([
       getGPXFilesByGiorno(targetGiornoId),
       getTrackPointsByGiorno(targetGiornoId),
+      getGiorno(targetGiornoId),
     ]);
+
+    let hotelRecord: Prenotazione | null = null;
+    if (giornoRecord?.hotelPrenotazioneId) {
+      hotelRecord = (await getPrenotazione(giornoRecord.hotelPrenotazioneId)) ?? null;
+    }
+
+    setGiorno(giornoRecord ?? null);
+    setHotelPrenotazione(hotelRecord);
     setGpxFiles(gpxRecords);
     setTrackPoints(pointRecords);
   }
@@ -89,14 +104,26 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
 
     async function loadData(): Promise<void> {
       try {
-        const [gpxRecords, pointRecords] = await Promise.all([
+        const [gpxRecords, pointRecords, giornoRecord] = await Promise.all([
           getGPXFilesByGiorno(giornoId),
           getTrackPointsByGiorno(giornoId),
+          getGiorno(giornoId),
         ]);
-        if (isActive) {
-          setGpxFiles(gpxRecords);
-          setTrackPoints(pointRecords);
+        if (!isActive) {
+          return;
         }
+        let hotelRecord: Prenotazione | null = null;
+        if (giornoRecord?.hotelPrenotazioneId) {
+          hotelRecord = (await getPrenotazione(giornoRecord.hotelPrenotazioneId)) ?? null;
+          if (!isActive) {
+            return;
+          }
+        }
+        setGiorno(giornoRecord ?? null);
+        setHotelPrenotazione(hotelRecord);
+        setGpxFiles(gpxRecords);
+        setTrackPoints(pointRecords);
+        setError(null);
       } catch (loadError) {
         if (isActive) {
           const message =
@@ -240,6 +267,34 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
     };
   }, [firstPoint?.lat, firstPoint?.lon, lastPoint?.lat, lastPoint?.lon]);
 
+  function handleOpenPlannedMap(): void {
+    if (!giorno?.plannedMapsUrl) {
+      return;
+    }
+    window.open(giorno.plannedMapsUrl, "_blank", "noopener,noreferrer");
+  }
+
+  function handleOpenHotelMap(): void {
+    const queryParts = [hotelPrenotazione?.titolo, hotelPrenotazione?.localita, hotelPrenotazione?.indirizzo]
+      .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+      .map((value) => value.trim());
+
+    if (queryParts.length === 0) {
+      return;
+    }
+
+    const query = encodeURIComponent(queryParts.join(", "));
+    const url = `https://www.google.com/maps/search/?api=1&query=${query}`;
+    window.open(url, "_blank", "noopener,noreferrer");
+  }
+
+  const canOpenHotelMap = Boolean(
+    hotelPrenotazione &&
+      [hotelPrenotazione.titolo, hotelPrenotazione.localita, hotelPrenotazione.indirizzo].some(
+        (value) => typeof value === "string" && value.trim().length > 0,
+      ),
+  );
+
   return (
     <main className="pageWrap">
       <div className="pageContainer">
@@ -249,6 +304,54 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
           </button>
           <h1 className="pageTitle">Giorno dettaglio</h1>
         </div>
+
+        <div className="card detailCard" style={{ marginBottom: "1rem" }}>
+          <h2 style={{ margin: "0 0 0.6rem 0" }}>Pianificazione Google Maps</h2>
+          {giorno?.plannedMapsUrl ? (
+            <>
+              <p className="metaText" style={{ margin: "0 0 0.6rem 0" }}>
+                Pianificazione salvata per questo giorno.
+              </p>
+              <button type="button" onClick={handleOpenPlannedMap} className="buttonPrimary">
+                VAI (Google Maps)
+              </button>
+            </>
+          ) : (
+            <>
+              <p className="metaText" style={{ margin: "0 0 0.6rem 0" }}>
+                Nessun link pianificazione impostato.
+              </p>
+              <button type="button" onClick={onBack} className="buttonGhost">
+                Aggiungi pianificazione
+              </button>
+            </>
+          )}
+        </div>
+
+        {hotelPrenotazione && (
+          <div className="card detailCard" style={{ marginBottom: "1rem" }}>
+            <h2 style={{ margin: "0 0 0.6rem 0" }}>Hotel del giorno</h2>
+            <p style={{ margin: "0 0 0.25rem 0", fontWeight: 700 }}>{hotelPrenotazione.titolo}</p>
+            {hotelPrenotazione.localita && (
+              <p className="metaText" style={{ margin: "0 0 0.25rem 0" }}>
+                Localita: {hotelPrenotazione.localita}
+              </p>
+            )}
+            {hotelPrenotazione.indirizzo && (
+              <p className="metaText" style={{ margin: "0 0 0.6rem 0" }}>
+                Indirizzo: {hotelPrenotazione.indirizzo}
+              </p>
+            )}
+            <button
+              type="button"
+              onClick={handleOpenHotelMap}
+              className="buttonGhost"
+              disabled={!canOpenHotelMap}
+            >
+              Vai all'hotel
+            </button>
+          </div>
+        )}
 
         <div className="card" style={{ padding: "0.85rem", marginBottom: "1rem" }}>
           <button

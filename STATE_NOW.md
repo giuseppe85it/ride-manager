@@ -24,6 +24,8 @@ Data aggiornamento: 21 02 2026
 - `titolo: string`
 - `stato: "PIANIFICATO" | "IN_CORSO" | "FATTO"`
 - `note?: string`
+- `hotelPrenotazioneId?: string`
+- `plannedMapsUrl?: string`
 - `createdAt: string`
 ### GPXFile (`src/models/GPXFile.ts`)
 - `id: string`
@@ -108,6 +110,7 @@ Relazioni:
 - `getViaggi(): Promise<Viaggio[]>`
 - `saveGiorno(giorno: Giorno): Promise<void>`
 - `getGiorniByViaggio(viaggioId: string): Promise<Giorno[]>`
+- `getGiorno(giornoId: string): Promise<Giorno | undefined>`
 - `saveGPXFile(gpxFile: GPXFile): Promise<void>`
 - `getGPXFilesByGiorno(giornoId: string): Promise<GPXFile[]>`
 - `deleteGPXFile(gpxFileId: string): Promise<void>`
