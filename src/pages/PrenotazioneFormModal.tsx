@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Giorno } from "../models/Giorno";
+import type { ImpostazioniApp } from "../models/ImpostazioniApp";
 import type { Prenotazione, PrenotazioneStato, PrenotazioneTipo } from "../models/Prenotazione";
-import { getGiorniByViaggio, savePrenotazione } from "../services/storage";
+import { getGiorniByViaggio, getImpostazioniApp, savePrenotazione } from "../services/storage";
 import "../styles/theme.css";
 
 interface PrenotazioneFormModalProps {
@@ -161,6 +162,15 @@ function formatDayOption(giorno: Giorno): string {
   return `${giorno.data} - ${giorno.titolo.trim() ? giorno.titolo : "Senza titolo"}`;
 }
 
+function getPayerLabels(settings?: ImpostazioniApp): { labelIO: string; labelLEI: string } {
+  const first = settings?.partecipanti[0]?.nome?.trim();
+  const second = settings?.partecipanti[1]?.nome?.trim();
+  return {
+    labelIO: first ? first : "IO",
+    labelLEI: second ? second : "LEI",
+  };
+}
+
 export default function PrenotazioneFormModal({
   isOpen,
   viaggioId,
@@ -172,6 +182,10 @@ export default function PrenotazioneFormModal({
   const [form, setForm] = useState<PrenotazioneFormState>(buildInitialState(initialPrenotazione));
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [payerLabels, setPayerLabels] = useState<{ labelIO: string; labelLEI: string }>({
+    labelIO: "IO",
+    labelLEI: "LEI",
+  });
 
   useEffect(() => {
     if (!isOpen) {
@@ -211,6 +225,32 @@ export default function PrenotazioneFormModal({
     setForm(buildInitialState(initialPrenotazione));
     setError(null);
   }, [isOpen, initialPrenotazione]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
+    let isActive = true;
+
+    async function loadSettings(): Promise<void> {
+      try {
+        const settings = await getImpostazioniApp();
+        if (isActive) {
+          setPayerLabels(getPayerLabels(settings));
+        }
+      } catch {
+        if (isActive) {
+          setPayerLabels({ labelIO: "IO", labelLEI: "LEI" });
+        }
+      }
+    }
+
+    void loadSettings();
+    return () => {
+      isActive = false;
+    };
+  }, [isOpen]);
 
   const modalTitle = useMemo(() => {
     return initialPrenotazione ? "Modifica prenotazione" : "Nuova prenotazione";
@@ -260,13 +300,15 @@ export default function PrenotazioneFormModal({
       quotaLei = toOptionalNumber(form.quotaLei);
 
       if (typeof quotaIo !== "number" || typeof quotaLei !== "number") {
-        setError("Per pagamento DIVISO devi indicare Quota IO e Quota LEI.");
+        setError(`Per pagamento DIVISO devi indicare Quota ${payerLabels.labelIO} e Quota ${payerLabels.labelLEI}.`);
         return;
       }
 
       const delta = Math.abs(quotaIo + quotaLei - costoTotale);
       if (delta > 0.01) {
-        setError("Quota IO + Quota LEI deve essere uguale al costo totale.");
+        setError(
+          `Quota ${payerLabels.labelIO} + quota ${payerLabels.labelLEI} deve essere uguale al costo totale.`,
+        );
         return;
       }
     }
@@ -643,8 +685,8 @@ export default function PrenotazioneFormModal({
                 }
               >
                 <option value="">Pagato da (non impostato)</option>
-                <option value="IO">IO</option>
-                <option value="LEI">LEI</option>
+                <option value="IO">{payerLabels.labelIO}</option>
+                <option value="LEI">{payerLabels.labelLEI}</option>
                 <option value="DIVISO">DIVISO</option>
               </select>
               <label className="prenCheckbox">
@@ -666,7 +708,7 @@ export default function PrenotazioneFormModal({
                     step="0.01"
                     min={0}
                     value={form.quotaIo}
-                    placeholder="Quota IO (EUR)"
+                    placeholder={`Quota ${payerLabels.labelIO} (EUR)`}
                     onChange={(event) =>
                       setForm((current) => ({ ...current, quotaIo: event.target.value }))
                     }
@@ -677,7 +719,7 @@ export default function PrenotazioneFormModal({
                     step="0.01"
                     min={0}
                     value={form.quotaLei}
-                    placeholder="Quota LEI (EUR)"
+                    placeholder={`Quota ${payerLabels.labelLEI} (EUR)`}
                     onChange={(event) =>
                       setForm((current) => ({ ...current, quotaLei: event.target.value }))
                     }

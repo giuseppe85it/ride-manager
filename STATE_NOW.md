@@ -98,8 +98,8 @@ Relazioni:
 
 ## Storage/DB (IndexedDB, verificato in `src/services/storage.ts`)
 - DB name: `RideManagerDB`
-- DB version: `6`
-- Store: `viaggi`, `giorni`, `gpxFiles`, `trackPoints`, `prenotazioni`, `costi`
+- DB version: `7`
+- Store: `viaggi`, `giorni`, `gpxFiles`, `trackPoints`, `prenotazioni`, `costi`, `impostazioni`
 - Migrazione: in `onupgradeneeded` crea store mancanti; non rimuove store esistenti nella versione attuale.
 - Normalizzazione retrocompatibile presente: `normalizeViaggio`, `normalizeGiorno`, `normalizePrenotazione`.
 - Funzioni storage esportate:
@@ -128,6 +128,8 @@ Relazioni:
 - `getCostiByGiorno(giornoId: string): Promise<Costo[]>`
 - `getCosto(id: string): Promise<Costo | undefined>`
 - `deleteCosto(id: string): Promise<void>`
+- `getImpostazioniApp(): Promise<ImpostazioniApp | undefined>`
+- `saveImpostazioniApp(data: ImpostazioniApp): Promise<void>`
 - `deleteViaggioCascade(viaggioId: string): Promise<void>`
 
 ## UI flow (pagine e navigazione reale)
@@ -149,7 +151,7 @@ Relazioni:
 - Dashboard Viaggio read-only con aggregazioni reali.
 - Prenotazioni HOTEL/TRAGHETTO con filtri, ricerca e CRUD.
 ### PARZIALE
-- Home: voci placeholder (Import GPX rapido, Impostazioni, Backup / Export).
+- Home: voci placeholder (Import GPX rapido, Backup / Export).
 - Dettaglio Viaggio: tab placeholder (Costi, Media).
 - Storage: varie query lato client via `getAll + filter` (non indicizzate).
 ### TODO

@@ -1,12 +1,13 @@
 import type { Costo, CostoCategoria, CostoPagatoDa } from "../models/Costo";
 import type { Giorno } from "../models/Giorno";
 import type { GPXFile } from "../models/GPXFile";
+import type { ImpostazioniApp, Partecipante } from "../models/ImpostazioniApp";
 import type { Prenotazione, PrenotazioneStato, PrenotazioneTipo } from "../models/Prenotazione";
 import type { TrackPoint } from "../models/TrackPoint";
 import type { Viaggio } from "../models/Viaggio";
 
 const DB_NAME = "RideManagerDB";
-const DB_VERSION = 6;
+const DB_VERSION = 7;
 
 const STORE_VIAGGI = "viaggi";
 const STORE_GIORNI = "giorni";
@@ -14,6 +15,7 @@ const STORE_GPX_FILES = "gpxFiles";
 const STORE_TRACK_POINTS = "trackPoints";
 const STORE_PRENOTAZIONI = "prenotazioni";
 const STORE_COSTI = "costi";
+const STORE_IMPOSTAZIONI = "impostazioni";
 const DEFAULT_VIAGGIO_STATO: Viaggio["stato"] = "PIANIFICAZIONE";
 const DEFAULT_GIORNO_STATO: Giorno["stato"] = "PIANIFICATO";
 const VIAGGIO_STATI: Viaggio["stato"][] = [
@@ -30,7 +32,8 @@ type StoreName =
   | typeof STORE_GPX_FILES
   | typeof STORE_TRACK_POINTS
   | typeof STORE_PRENOTAZIONI
-  | typeof STORE_COSTI;
+  | typeof STORE_COSTI
+  | typeof STORE_IMPOSTAZIONI;
 
 type LegacyViaggioRecord = Partial<Viaggio> & { id: string; titolo?: string };
 type LegacyGiornoRecord = Partial<Giorno> & { id: string; viaggioId?: string };
@@ -45,6 +48,11 @@ type LegacyCostoRecord = Partial<Costo> & {
   viaggioId?: string;
   categoria?: string;
   pagatoDa?: string;
+};
+type LegacyPartecipanteRecord = Partial<Partecipante> & { id?: string };
+type LegacyImpostazioniAppRecord = Partial<ImpostazioniApp> & {
+  id?: string;
+  partecipanti?: LegacyPartecipanteRecord[];
 };
 
 let dbPromise: Promise<IDBDatabase> | null = null;
@@ -248,6 +256,35 @@ function normalizeCosto(record: LegacyCostoRecord): Costo | null {
   };
 }
 
+function normalizeImpostazioniApp(
+  record: LegacyImpostazioniAppRecord,
+): ImpostazioniApp | null {
+  if (record.id !== "app") {
+    console.warn("Impostazioni scartate: id non valido", record);
+    return null;
+  }
+
+  const nowIso = new Date().toISOString();
+  const partecipantiRaw = Array.isArray(record.partecipanti) ? record.partecipanti : [];
+  const partecipanti: Partecipante[] = partecipantiRaw
+    .map((item, index) => {
+      const id =
+        typeof item?.id === "string" && item.id.trim()
+          ? item.id
+          : `p_${index + 1}`;
+      const nome = typeof item?.nome === "string" ? item.nome.trim() : "";
+      return { id, nome };
+    })
+    .filter((item) => item.id.trim().length > 0);
+
+  return {
+    id: "app",
+    partecipanti,
+    createdAt: toValidIso(record.createdAt) ?? nowIso,
+    updatedAt: toValidIso(record.updatedAt) ?? nowIso,
+  };
+}
+
 function requestToPromise<T>(request: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
     request.onsuccess = () => resolve(request.result);
@@ -314,6 +351,10 @@ export function initDB(): Promise<IDBDatabase> {
 
       if (!db.objectStoreNames.contains(STORE_COSTI)) {
         db.createObjectStore(STORE_COSTI, { keyPath: "id" });
+      }
+
+      if (!db.objectStoreNames.contains(STORE_IMPOSTAZIONI)) {
+        db.createObjectStore(STORE_IMPOSTAZIONI, { keyPath: "id" });
       }
     };
 
@@ -542,6 +583,28 @@ export async function deleteCosto(id: string): Promise<void> {
   const transaction = db.transaction(STORE_COSTI, "readwrite");
   transaction.objectStore(STORE_COSTI).delete(id);
   await transactionToPromise(transaction);
+}
+
+export async function getImpostazioniApp(): Promise<ImpostazioniApp | undefined> {
+  const db = await initDB();
+  const transaction = db.transaction(STORE_IMPOSTAZIONI, "readonly");
+  const request = transaction.objectStore(STORE_IMPOSTAZIONI).get("app");
+  const rawRecord = await requestToPromise(request);
+  await transactionToPromise(transaction);
+
+  if (!rawRecord) {
+    return undefined;
+  }
+
+  return normalizeImpostazioniApp(rawRecord as LegacyImpostazioniAppRecord) ?? undefined;
+}
+
+export async function saveImpostazioniApp(data: ImpostazioniApp): Promise<void> {
+  const normalized = normalizeImpostazioniApp(data);
+  if (!normalized) {
+    throw new Error("Impostazioni non valide");
+  }
+  await putRecord(STORE_IMPOSTAZIONI, normalized);
 }
 
 export async function deleteViaggioCascade(viaggioId: string): Promise<void> {

@@ -1,7 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Costo, CostoCategoria } from "../models/Costo";
+import type { ImpostazioniApp } from "../models/ImpostazioniApp";
 import type { Prenotazione } from "../models/Prenotazione";
-import { deleteCosto, getCostiByViaggio, getPrenotazioniByViaggio } from "../services/storage";
+import {
+  deleteCosto,
+  getCostiByViaggio,
+  getImpostazioniApp,
+  getPrenotazioniByViaggio,
+} from "../services/storage";
 import CostoFormModal from "./CostoFormModal";
 import "./costi.css";
 import "../styles/theme.css";
@@ -233,6 +239,25 @@ function getPayerBadgeLabel(value?: BookingPagatoDa): string {
   return value ?? "PAYER?";
 }
 
+function getPayerLabels(settings?: ImpostazioniApp): { labelIO: string; labelLEI: string } {
+  const first = settings?.partecipanti[0]?.nome?.trim();
+  const second = settings?.partecipanti[1]?.nome?.trim();
+  return {
+    labelIO: first ? first : "IO",
+    labelLEI: second ? second : "LEI",
+  };
+}
+
+function mapPayerDisplay(
+  payer: BookingPagatoDa | undefined,
+  labels: { labelIO: string; labelLEI: string },
+): string {
+  if (payer === "IO") return labels.labelIO;
+  if (payer === "LEI") return labels.labelLEI;
+  if (payer === "DIVISO") return "DIVISO";
+  return getPayerBadgeLabel(payer);
+}
+
 export default function CostiViaggio({ viaggioId }: CostiViaggioProps) {
   const [costi, setCosti] = useState<Costo[]>([]);
   const [prenotazioni, setPrenotazioni] = useState<Prenotazione[]>([]);
@@ -241,21 +266,28 @@ export default function CostiViaggio({ viaggioId }: CostiViaggioProps) {
   const [categoriaFiltro, setCategoriaFiltro] = useState<CategoriaFiltro>("ALL");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCosto, setEditingCosto] = useState<Costo | null>(null);
+  const [payerLabels, setPayerLabels] = useState<{ labelIO: string; labelLEI: string }>({
+    labelIO: "IO",
+    labelLEI: "LEI",
+  });
 
   async function loadCosti(): Promise<void> {
     try {
       setIsLoading(true);
-      const [costiRecords, prenotazioniRecords] = await Promise.all([
+      const [costiRecords, prenotazioniRecords, settings] = await Promise.all([
         getCostiByViaggio(viaggioId),
         getPrenotazioniByViaggio(viaggioId),
+        getImpostazioniApp(),
       ]);
       setCosti(costiRecords);
       setPrenotazioni(prenotazioniRecords);
+      setPayerLabels(getPayerLabels(settings));
       setError(null);
     } catch (loadError) {
       const message =
         loadError instanceof Error ? loadError.message : "Errore caricamento costi e prenotazioni";
       setError(message);
+      setPayerLabels({ labelIO: "IO", labelLEI: "LEI" });
     } finally {
       setIsLoading(false);
     }
@@ -558,10 +590,10 @@ export default function CostiViaggio({ viaggioId }: CostiViaggioProps) {
 
       <div className="card" style={{ padding: "0.85rem", marginBottom: "1rem" }}>
         <p className="metaText" style={{ margin: "0.2rem 0" }}>
-          Quote IO (confermati): {formatEuro(analytics.quotaIoTotale)}
+          Quote {payerLabels.labelIO} (confermati): {formatEuro(analytics.quotaIoTotale)}
         </p>
         <p className="metaText" style={{ margin: "0.2rem 0" }}>
-          Quote LEI (confermati): {formatEuro(analytics.quotaLeiTotale)}
+          Quote {payerLabels.labelLEI} (confermati): {formatEuro(analytics.quotaLeiTotale)}
         </p>
         {analytics.bookingPaidMissingPayer > 0 && (
           <p className="metaText" style={{ margin: "0.2rem 0", color: "#fb7185" }}>
@@ -609,7 +641,8 @@ export default function CostiViaggio({ viaggioId }: CostiViaggioProps) {
                           Importo: {formatEuro(costo.importo)}
                         </p>
                         <p className="metaText" style={{ margin: "0.25rem 0" }}>
-                          Quota IO: {formatEuro(quote.quotaIo)} | Quota LEI: {formatEuro(quote.quotaLei)}
+                          Quota {payerLabels.labelIO}: {formatEuro(quote.quotaIo)} | Quota {payerLabels.labelLEI}:{" "}
+                          {formatEuro(quote.quotaLei)}
                         </p>
                         {costo.note && (
                           <p className="metaText" style={{ margin: "0.25rem 0" }}>
@@ -647,7 +680,7 @@ export default function CostiViaggio({ viaggioId }: CostiViaggioProps) {
                     const quoteResult = getBookingQuoteResult(booking);
                     const payerMissing = quoteResult.missingPayer;
                     const invalidSplit = quoteResult.invalidSplit;
-                    const payerLabel = getPayerBadgeLabel(booking.pagatoDa);
+                    const payerLabel = mapPayerDisplay(booking.pagatoDa, payerLabels);
 
                     return (
                       <li key={`paid-${booking.id}`} className="card costiCard">
@@ -689,12 +722,14 @@ export default function CostiViaggio({ viaggioId }: CostiViaggioProps) {
                         </p>
                         {payerMissing && (
                           <p className="metaText" style={{ margin: "0.25rem 0", color: "#fb7185" }}>
-                            Payer mancante: costo confermato ma escluso da quote IO/LEI.
+                            Payer mancante: costo confermato ma escluso da quote {payerLabels.labelIO}/
+                            {payerLabels.labelLEI}.
                           </p>
                         )}
                         {invalidSplit && (
                           <p className="metaText" style={{ margin: "0.25rem 0", color: "#fb7185" }}>
-                            Quote DIVISO non coerenti: costo escluso da quote IO/LEI.
+                            Quote DIVISO non coerenti: costo escluso da quote {payerLabels.labelIO}/
+                            {payerLabels.labelLEI}.
                           </p>
                         )}
                       </li>
@@ -744,7 +779,7 @@ export default function CostiViaggio({ viaggioId }: CostiViaggioProps) {
                                 }
                           }
                         >
-                          {getPayerBadgeLabel(booking.pagatoDa)}
+                          {mapPayerDisplay(booking.pagatoDa, payerLabels)}
                         </span>
                       </p>
                     </li>

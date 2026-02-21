@@ -1,3 +1,7 @@
+import { useEffect, useMemo, useState } from "react";
+import type { ImpostazioniApp } from "../models/ImpostazioniApp";
+import { getImpostazioniApp } from "../services/storage";
+import ImpostazioniModal from "./ImpostazioniModal";
 import "./Home.css";
 
 interface HomeProps {
@@ -9,6 +13,35 @@ function showComingSoon(featureName: string): void {
 }
 
 export default function Home({ onOpenViaggi }: HomeProps) {
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [impostazioni, setImpostazioni] = useState<ImpostazioniApp | undefined>(undefined);
+
+  useEffect(() => {
+    let isActive = true;
+
+    async function loadSettings(): Promise<void> {
+      try {
+        const current = await getImpostazioniApp();
+        if (isActive) {
+          setImpostazioni(current);
+        }
+      } catch {
+        if (isActive) {
+          setImpostazioni(undefined);
+        }
+      }
+    }
+
+    void loadSettings();
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
+  const partecipantiCount = useMemo(() => {
+    return impostazioni?.partecipanti.length ?? 0;
+  }, [impostazioni]);
+
   return (
     <main className="pageWrap">
       <div className="pageContainer">
@@ -37,10 +70,14 @@ export default function Home({ onOpenViaggi }: HomeProps) {
             <button
               type="button"
               className="home-card"
-              onClick={() => showComingSoon("Impostazioni")}
+              onClick={() => setIsSettingsOpen(true)}
             >
               <h2>Impostazioni</h2>
-              <p>In arrivo</p>
+              <p>
+                {partecipantiCount > 0
+                  ? `${partecipantiCount} partecipanti configurati`
+                  : "Configura partecipanti"}
+              </p>
             </button>
 
             <button
@@ -54,6 +91,12 @@ export default function Home({ onOpenViaggi }: HomeProps) {
           </section>
         </div>
       </div>
+
+      <ImpostazioniModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        onSaved={(data) => setImpostazioni(data)}
+      />
     </main>
   );
 }

@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import type { Costo, CostoCategoria, CostoPagatoDa } from "../models/Costo";
 import type { Giorno } from "../models/Giorno";
-import { deleteCosto, getGiorniByViaggio, saveCosto } from "../services/storage";
+import type { ImpostazioniApp } from "../models/ImpostazioniApp";
+import { deleteCosto, getGiorniByViaggio, getImpostazioniApp, saveCosto } from "../services/storage";
 import "../styles/theme.css";
 
 interface CostoFormModalProps {
@@ -74,6 +75,15 @@ function formatDayOption(giorno: Giorno): string {
   return `${giorno.data} - ${giorno.titolo.trim() ? giorno.titolo : "Senza titolo"}`;
 }
 
+function getPayerLabels(settings?: ImpostazioniApp): { labelIO: string; labelLEI: string } {
+  const first = settings?.partecipanti[0]?.nome?.trim();
+  const second = settings?.partecipanti[1]?.nome?.trim();
+  return {
+    labelIO: first ? first : "IO",
+    labelLEI: second ? second : "LEI",
+  };
+}
+
 export default function CostoFormModal({
   isOpen,
   viaggioId,
@@ -85,6 +95,10 @@ export default function CostoFormModal({
   const [form, setForm] = useState<CostoFormState>(buildInitialState(initialCosto));
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [payerLabels, setPayerLabels] = useState<{ labelIO: string; labelLEI: string }>({
+    labelIO: "IO",
+    labelLEI: "LEI",
+  });
 
   useEffect(() => {
     if (!isOpen) return;
@@ -118,6 +132,30 @@ export default function CostoFormModal({
     };
   }, [isOpen, viaggioId]);
 
+  useEffect(() => {
+    if (!isOpen) return;
+
+    let isActive = true;
+
+    async function loadSettings(): Promise<void> {
+      try {
+        const settings = await getImpostazioniApp();
+        if (isActive) {
+          setPayerLabels(getPayerLabels(settings));
+        }
+      } catch {
+        if (isActive) {
+          setPayerLabels({ labelIO: "IO", labelLEI: "LEI" });
+        }
+      }
+    }
+
+    void loadSettings();
+    return () => {
+      isActive = false;
+    };
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   async function handleSave(): Promise<void> {
@@ -144,13 +182,15 @@ export default function CostoFormModal({
 
     if (form.pagatoDa === "DIVISO") {
       if (quotaIo === undefined || quotaLei === undefined) {
-        setError("Per DIVISO inserisci quota IO e quota LEI.");
+        setError(`Per DIVISO inserisci quota ${payerLabels.labelIO} e quota ${payerLabels.labelLEI}.`);
         return;
       }
 
       const diff = Math.abs(quotaIo + quotaLei - importo);
       if (diff > 0.01) {
-        setError("Quota IO + quota LEI deve essere uguale all'importo.");
+        setError(
+          `Quota ${payerLabels.labelIO} + quota ${payerLabels.labelLEI} deve essere uguale all'importo.`,
+        );
         return;
       }
     }
@@ -247,8 +287,8 @@ export default function CostoFormModal({
               }))
             }
           >
-            <option value="IO">IO</option>
-            <option value="LEI">LEI</option>
+            <option value="IO">{payerLabels.labelIO}</option>
+            <option value="LEI">{payerLabels.labelLEI}</option>
             <option value="DIVISO">DIVISO</option>
           </select>
 
@@ -304,7 +344,7 @@ export default function CostoFormModal({
                 type="number"
                 min={0}
                 step="0.01"
-                placeholder="Quota IO"
+                placeholder={`Quota ${payerLabels.labelIO}`}
                 value={form.quotaIo}
                 onChange={(event) => setForm((current) => ({ ...current, quotaIo: event.target.value }))}
               />
@@ -313,7 +353,7 @@ export default function CostoFormModal({
                 type="number"
                 min={0}
                 step="0.01"
-                placeholder="Quota LEI"
+                placeholder={`Quota ${payerLabels.labelLEI}`}
                 value={form.quotaLei}
                 onChange={(event) => setForm((current) => ({ ...current, quotaLei: event.target.value }))}
               />
