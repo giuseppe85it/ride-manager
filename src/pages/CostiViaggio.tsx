@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Costo, CostoCategoria } from "../models/Costo";
-import { deleteCosto, getCostiByViaggio } from "../services/storage";
+import type { Prenotazione } from "../models/Prenotazione";
+import { deleteCosto, getCostiByViaggio, getPrenotazioniByViaggio } from "../services/storage";
 import CostoFormModal from "./CostoFormModal";
 import "./costi.css";
 import "../styles/theme.css";
@@ -10,6 +11,25 @@ interface CostiViaggioProps {
 }
 
 type CategoriaFiltro = "ALL" | CostoCategoria;
+type BookingCostCategory = "HOTEL" | "TRAGHETTI";
+
+interface BookingCost {
+  id: string;
+  categoria: BookingCostCategory;
+  tipo: Prenotazione["tipo"];
+  titolo: string;
+  data: string;
+  ora?: string;
+  importo: number;
+  valuta: "EUR";
+  pagato: boolean;
+}
+
+interface CategoryTotals {
+  confirmed: number;
+  unpaid: number;
+  total: number;
+}
 
 function formatDate(value: string): string {
   const parsed = new Date(value);
@@ -52,17 +72,23 @@ function getQuote(costo: Costo): { quotaIo: number; quotaLei: number } {
   };
 }
 
-function sortKey(costo: Costo): number {
-  const base = Date.parse(costo.data);
+function parseDateTimeKey(dateValue: string, timeValue?: string): number {
+  const base = Date.parse(dateValue);
   if (Number.isNaN(base)) {
     return 0;
   }
 
-  if (!costo.ora) {
+  if (!timeValue) {
     return base;
   }
 
-  const parts = costo.ora.split(":");
+  const dateOnly = dateValue.split("T")[0];
+  const combined = Date.parse(`${dateOnly}T${timeValue}:00`);
+  if (!Number.isNaN(combined)) {
+    return combined;
+  }
+
+  const parts = timeValue.split(":");
   if (parts.length < 2) {
     return base;
   }
@@ -76,8 +102,31 @@ function sortKey(costo: Costo): number {
   return base + (hour * 60 + minute) * 60 * 1000;
 }
 
+function sortManualCostsDesc(left: Costo, right: Costo): number {
+  return parseDateTimeKey(right.data, right.ora) - parseDateTimeKey(left.data, left.ora);
+}
+
+function sortBookingCostsDesc(left: BookingCost, right: BookingCost): number {
+  return parseDateTimeKey(right.data, right.ora) - parseDateTimeKey(left.data, left.ora);
+}
+
+function formatDateWithOra(dateValue: string, timeValue?: string): string {
+  return `${formatDate(dateValue)}${timeValue ? ` - ${timeValue}` : ""}`;
+}
+
+function getBookingCategoria(tipo: Prenotazione["tipo"]): BookingCostCategory | null {
+  if (tipo === "HOTEL") {
+    return "HOTEL";
+  }
+  if (tipo === "TRAGHETTO") {
+    return "TRAGHETTI";
+  }
+  return null;
+}
+
 export default function CostiViaggio({ viaggioId }: CostiViaggioProps) {
   const [costi, setCosti] = useState<Costo[]>([]);
+  const [prenotazioni, setPrenotazioni] = useState<Prenotazione[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [categoriaFiltro, setCategoriaFiltro] = useState<CategoriaFiltro>("ALL");
@@ -87,11 +136,16 @@ export default function CostiViaggio({ viaggioId }: CostiViaggioProps) {
   async function loadCosti(): Promise<void> {
     try {
       setIsLoading(true);
-      const records = await getCostiByViaggio(viaggioId);
-      setCosti(records);
+      const [costiRecords, prenotazioniRecords] = await Promise.all([
+        getCostiByViaggio(viaggioId),
+        getPrenotazioniByViaggio(viaggioId),
+      ]);
+      setCosti(costiRecords);
+      setPrenotazioni(prenotazioniRecords);
       setError(null);
     } catch (loadError) {
-      const message = loadError instanceof Error ? loadError.message : "Errore caricamento costi";
+      const message =
+        loadError instanceof Error ? loadError.message : "Errore caricamento costi e prenotazioni";
       setError(message);
     } finally {
       setIsLoading(false);
@@ -102,40 +156,102 @@ export default function CostiViaggio({ viaggioId }: CostiViaggioProps) {
     void loadCosti();
   }, [viaggioId]);
 
-  const costiFiltrati = useMemo(() => {
+  const bookingCosts = useMemo<BookingCost[]>(() => {
+    return prenotazioni.flatMap((prenotazione) => {
+      const importo = Number(prenotazione.costoTotale);
+      if (!Number.isFinite(importo) || importo <= 0) {
+        return [];
+      }
+
+      const categoria = getBookingCategoria(prenotazione.tipo);
+      if (!categoria) {
+        return [];
+      }
+
+      return [
+        {
+          id: prenotazione.id,
+          categoria,
+          tipo: prenotazione.tipo,
+          titolo: prenotazione.titolo,
+          data: prenotazione.dataInizio,
+          ora: prenotazione.oraInizio,
+          importo,
+          valuta: prenotazione.valuta,
+          pagato: prenotazione.pagato === true,
+        },
+      ];
+    });
+  }, [prenotazioni]);
+
+  const costiManualiFiltrati = useMemo(() => {
     return [...costi]
       .filter((costo) => (categoriaFiltro === "ALL" ? true : costo.categoria === categoriaFiltro))
-      .sort((left, right) => sortKey(right) - sortKey(left));
+      .sort(sortManualCostsDesc);
   }, [costi, categoriaFiltro]);
 
+  const bookingPaidFiltrati = useMemo(() => {
+    return bookingCosts
+      .filter((booking) => booking.pagato)
+      .filter((booking) => (categoriaFiltro === "ALL" ? true : booking.categoria === categoriaFiltro))
+      .sort(sortBookingCostsDesc);
+  }, [bookingCosts, categoriaFiltro]);
+
+  const bookingUnpaidFiltrati = useMemo(() => {
+    return bookingCosts
+      .filter((booking) => !booking.pagato)
+      .filter((booking) => (categoriaFiltro === "ALL" ? true : booking.categoria === categoriaFiltro))
+      .sort(sortBookingCostsDesc);
+  }, [bookingCosts, categoriaFiltro]);
+
   const totals = useMemo(() => {
-    const totalsByCategory: Record<CostoCategoria, number> = {
-      BENZINA: 0,
-      HOTEL: 0,
-      TRAGHETTI: 0,
-      EXTRA: 0,
+    const totalsByCategory: Record<CostoCategoria, CategoryTotals> = {
+      BENZINA: { confirmed: 0, unpaid: 0, total: 0 },
+      HOTEL: { confirmed: 0, unpaid: 0, total: 0 },
+      TRAGHETTI: { confirmed: 0, unpaid: 0, total: 0 },
+      EXTRA: { confirmed: 0, unpaid: 0, total: 0 },
     };
 
-    let totaleGenerale = 0;
+    let totaleManualiConfermati = 0;
+    let totaleBookingConfermati = 0;
+    let totaleBookingDaPagare = 0;
     let totaleIo = 0;
     let totaleLei = 0;
 
-    for (const costo of costiFiltrati) {
-      totaleGenerale += costo.importo;
-      totalsByCategory[costo.categoria] += costo.importo;
-
+    for (const costo of costi) {
+      totaleManualiConfermati += costo.importo;
+      totalsByCategory[costo.categoria].confirmed += costo.importo;
+      totalsByCategory[costo.categoria].total += costo.importo;
       const quote = getQuote(costo);
       totaleIo += quote.quotaIo;
       totaleLei += quote.quotaLei;
     }
 
+    for (const booking of bookingCosts) {
+      if (booking.pagato) {
+        totaleBookingConfermati += booking.importo;
+        totalsByCategory[booking.categoria].confirmed += booking.importo;
+      } else {
+        totaleBookingDaPagare += booking.importo;
+        totalsByCategory[booking.categoria].unpaid += booking.importo;
+      }
+      totalsByCategory[booking.categoria].total += booking.importo;
+    }
+
+    const totaleConfermato = totaleManualiConfermati + totaleBookingConfermati;
+    const totaleComplessivo = totaleConfermato + totaleBookingDaPagare;
+
     return {
-      totaleGenerale,
+      totaleConfermato,
+      totaleDaPagare: totaleBookingDaPagare,
+      totaleComplessivo,
+      totaleManualiConfermati,
+      totaleBookingConfermati,
       totalsByCategory,
       totaleIo,
       totaleLei,
     };
-  }, [costiFiltrati]);
+  }, [bookingCosts, costi]);
 
   async function handleDelete(costoId: string): Promise<void> {
     const confirmed = window.confirm("Eliminare questo costo?");
@@ -209,30 +325,50 @@ export default function CostiViaggio({ viaggioId }: CostiViaggioProps) {
       <div className="costiTotals">
         <div className="card" style={{ padding: "0.75rem" }}>
           <p className="metaText" style={{ margin: "0 0 0.35rem 0" }}>
-            Totale generale
+            Totale CONFERMATO (pagato)
           </p>
-          <strong>{formatEuro(totals.totaleGenerale)}</strong>
+          <strong>{formatEuro(totals.totaleConfermato)}</strong>
+        </div>
+        <div className="card" style={{ padding: "0.75rem" }}>
+          <p className="metaText" style={{ margin: "0 0 0.35rem 0" }}>
+            Totale DA PAGARE (prenotazioni)
+          </p>
+          <strong>{formatEuro(totals.totaleDaPagare)}</strong>
+        </div>
+        <div className="card" style={{ padding: "0.75rem" }}>
+          <p className="metaText" style={{ margin: "0 0 0.35rem 0" }}>
+            Totale COMPLESSIVO
+          </p>
+          <strong>{formatEuro(totals.totaleComplessivo)}</strong>
         </div>
         <div className="card" style={{ padding: "0.75rem" }}>
           <p className="metaText" style={{ margin: "0 0 0.35rem 0" }}>
             Totali per categoria
           </p>
           <p className="metaText" style={{ margin: "0.2rem 0" }}>
-            Benzina: {formatEuro(totals.totalsByCategory.BENZINA)}
+            Benzina: {formatEuro(totals.totalsByCategory.BENZINA.confirmed)} confermati |
+            {` ${formatEuro(totals.totalsByCategory.BENZINA.unpaid)} da pagare`} |
+            {` ${formatEuro(totals.totalsByCategory.BENZINA.total)} totale`}
           </p>
           <p className="metaText" style={{ margin: "0.2rem 0" }}>
-            Hotel: {formatEuro(totals.totalsByCategory.HOTEL)}
+            Hotel: {formatEuro(totals.totalsByCategory.HOTEL.confirmed)} confermati |
+            {` ${formatEuro(totals.totalsByCategory.HOTEL.unpaid)} da pagare`} |
+            {` ${formatEuro(totals.totalsByCategory.HOTEL.total)} totale`}
           </p>
           <p className="metaText" style={{ margin: "0.2rem 0" }}>
-            Traghetti: {formatEuro(totals.totalsByCategory.TRAGHETTI)}
+            Traghetti: {formatEuro(totals.totalsByCategory.TRAGHETTI.confirmed)} confermati |
+            {` ${formatEuro(totals.totalsByCategory.TRAGHETTI.unpaid)} da pagare`} |
+            {` ${formatEuro(totals.totalsByCategory.TRAGHETTI.total)} totale`}
           </p>
           <p className="metaText" style={{ margin: "0.2rem 0" }}>
-            Extra: {formatEuro(totals.totalsByCategory.EXTRA)}
+            Extra: {formatEuro(totals.totalsByCategory.EXTRA.confirmed)} confermati |
+            {` ${formatEuro(totals.totalsByCategory.EXTRA.unpaid)} da pagare`} |
+            {` ${formatEuro(totals.totalsByCategory.EXTRA.total)} totale`}
           </p>
         </div>
         <div className="card" style={{ padding: "0.75rem" }}>
           <p className="metaText" style={{ margin: "0 0 0.35rem 0" }}>
-            Quota
+            Quote manuali
           </p>
           <p className="metaText" style={{ margin: "0.2rem 0" }}>
             IO: {formatEuro(totals.totaleIo)}
@@ -240,56 +376,133 @@ export default function CostiViaggio({ viaggioId }: CostiViaggioProps) {
           <p className="metaText" style={{ margin: "0.2rem 0" }}>
             LEI: {formatEuro(totals.totaleLei)}
           </p>
+          <p className="metaText" style={{ margin: "0.2rem 0" }}>
+            Manuali confermati: {formatEuro(totals.totaleManualiConfermati)}
+          </p>
+          <p className="metaText" style={{ margin: "0.2rem 0" }}>
+            Prenotazioni pagate: {formatEuro(totals.totaleBookingConfermati)}
+          </p>
         </div>
       </div>
 
       {isLoading && <p className="metaText">Caricamento costi...</p>}
       {!isLoading && error && <p className="errorText">{error}</p>}
-      {!isLoading && !error && costiFiltrati.length === 0 && <p className="metaText">Nessun costo trovato.</p>}
 
-      {!isLoading && !error && costiFiltrati.length > 0 && (
-        <ul className="listPlain cardsGrid">
-          {costiFiltrati.map((costo) => {
-            const quote = getQuote(costo);
-            return (
-              <li key={costo.id} className="card costiCard">
-                <div className="costiCardHeader">
-                  <span className="badge">{categoriaLabel(costo.categoria)}</span>
-                  <strong>{costo.titolo}</strong>
-                </div>
-                <p className="metaText" style={{ margin: "0.25rem 0" }}>
-                  Data: {formatDate(costo.data)} {costo.ora ? `- ${costo.ora}` : ""}
-                </p>
-                <p className="metaText" style={{ margin: "0.25rem 0" }}>
-                  Importo: {formatEuro(costo.importo)}
-                </p>
-                <p className="metaText" style={{ margin: "0.25rem 0" }}>
-                  Quota IO: {formatEuro(quote.quotaIo)} | Quota LEI: {formatEuro(quote.quotaLei)}
-                </p>
-                {costo.note && (
+      {!isLoading && !error && (
+        <>
+          <h3 style={{ margin: "0.5rem 0" }}>Costi manuali (confermati)</h3>
+          {costiManualiFiltrati.length === 0 && <p className="metaText">Nessun costo manuale trovato.</p>}
+          {costiManualiFiltrati.length > 0 && (
+            <ul className="listPlain cardsGrid">
+              {costiManualiFiltrati.map((costo) => {
+                const quote = getQuote(costo);
+                return (
+                  <li key={costo.id} className="card costiCard">
+                    <div className="costiCardHeader">
+                      <span className="badge">{categoriaLabel(costo.categoria)}</span>
+                      <strong>{costo.titolo}</strong>
+                    </div>
+                    <p className="metaText" style={{ margin: "0.25rem 0" }}>
+                      Data: {formatDateWithOra(costo.data, costo.ora)}
+                    </p>
+                    <p className="metaText" style={{ margin: "0.25rem 0" }}>
+                      Importo: {formatEuro(costo.importo)}
+                    </p>
+                    <p className="metaText" style={{ margin: "0.25rem 0" }}>
+                      Quota IO: {formatEuro(quote.quotaIo)} | Quota LEI: {formatEuro(quote.quotaLei)}
+                    </p>
+                    {costo.note && (
+                      <p className="metaText" style={{ margin: "0.25rem 0" }}>
+                        Note: {costo.note}
+                      </p>
+                    )}
+                    <div className="costiActions">
+                      <button
+                        type="button"
+                        className="buttonGhost"
+                        onClick={() => {
+                          setEditingCosto(costo);
+                          setIsModalOpen(true);
+                        }}
+                      >
+                        Modifica
+                      </button>
+                      <button type="button" className="buttonGhost" onClick={() => void handleDelete(costo.id)}>
+                        Elimina
+                      </button>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+
+          <h3 style={{ margin: "1rem 0 0.5rem" }}>Prenotazioni pagate (confermate)</h3>
+          {bookingPaidFiltrati.length === 0 && <p className="metaText">Nessuna prenotazione pagata.</p>}
+          {bookingPaidFiltrati.length > 0 && (
+            <ul className="listPlain cardsGrid">
+              {bookingPaidFiltrati.map((booking) => (
+                <li key={`booking-paid-${booking.id}`} className="card costiCard">
+                  <div className="costiCardHeader">
+                    <span className="badge">{booking.tipo}</span>
+                    <strong>{booking.titolo}</strong>
+                  </div>
                   <p className="metaText" style={{ margin: "0.25rem 0" }}>
-                    Note: {costo.note}
+                    Data: {formatDateWithOra(booking.data, booking.ora)}
                   </p>
-                )}
-                <div className="costiActions">
-                  <button
-                    type="button"
-                    className="buttonGhost"
-                    onClick={() => {
-                      setEditingCosto(costo);
-                      setIsModalOpen(true);
-                    }}
-                  >
-                    Modifica
-                  </button>
-                  <button type="button" className="buttonGhost" onClick={() => void handleDelete(costo.id)}>
-                    Elimina
-                  </button>
-                </div>
-              </li>
-            );
-          })}
-        </ul>
+                  <p className="metaText" style={{ margin: "0.25rem 0" }}>
+                    Importo: {formatEuro(booking.importo)}
+                  </p>
+                  <p className="metaText" style={{ margin: "0.25rem 0" }}>
+                    <span
+                      className="badge"
+                      style={{
+                        borderColor: "rgba(52, 211, 153, 0.6)",
+                        background: "rgba(52, 211, 153, 0.2)",
+                        color: "#34d399",
+                      }}
+                    >
+                      PAGATO
+                    </span>
+                  </p>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <h3 style={{ margin: "1rem 0 0.5rem" }}>Prenotazioni da pagare</h3>
+          {bookingUnpaidFiltrati.length === 0 && <p className="metaText">Nessuna prenotazione da pagare.</p>}
+          {bookingUnpaidFiltrati.length > 0 && (
+            <ul className="listPlain cardsGrid">
+              {bookingUnpaidFiltrati.map((booking) => (
+                <li key={`booking-unpaid-${booking.id}`} className="card costiCard">
+                  <div className="costiCardHeader">
+                    <span className="badge">{booking.tipo}</span>
+                    <strong>{booking.titolo}</strong>
+                  </div>
+                  <p className="metaText" style={{ margin: "0.25rem 0" }}>
+                    Data: {formatDateWithOra(booking.data, booking.ora)}
+                  </p>
+                  <p className="metaText" style={{ margin: "0.25rem 0" }}>
+                    Importo: {formatEuro(booking.importo)}
+                  </p>
+                  <p className="metaText" style={{ margin: "0.25rem 0" }}>
+                    <span
+                      className="badge"
+                      style={{
+                        borderColor: "rgba(225, 29, 72, 0.65)",
+                        background: "rgba(225, 29, 72, 0.2)",
+                        color: "#fb7185",
+                      }}
+                    >
+                      DA PAGARE
+                    </span>
+                  </p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
       )}
 
       <CostoFormModal
