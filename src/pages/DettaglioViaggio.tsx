@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import CostiViaggio from "./CostiViaggio";
 import Giorni from "./Giorni";
 import PrenotazioniViaggio from "./PrenotazioniViaggio";
 import type { Viaggio } from "../models/Viaggio";
@@ -182,6 +183,7 @@ export default function DettaglioViaggio({
 
         {activeTab === "giorni" && <Giorni viaggioId={viaggioId} onOpenGiorno={onOpenGiorno} embedded />}
         {activeTab === "prenotazioni" && <PrenotazioniViaggio viaggioId={viaggioId} />}
+        {activeTab === "costi" && <CostiViaggio viaggioId={viaggioId} />}
 
         {activeTab === "dashboard" && (
           <div className="card detailCard" style={{ padding: "1rem" }}>
@@ -252,7 +254,10 @@ export default function DettaglioViaggio({
           </div>
         )}
 
-        {activeTab !== "giorni" && activeTab !== "dashboard" && activeTab !== "prenotazioni" && (
+        {activeTab !== "giorni" &&
+          activeTab !== "dashboard" &&
+          activeTab !== "prenotazioni" &&
+          activeTab !== "costi" && (
           <div className="card" style={{ padding: "1rem" }}>
             <p className="metaText" style={{ margin: 0 }}>
               In arrivo

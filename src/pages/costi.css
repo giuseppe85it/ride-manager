@@ -1,0 +1,98 @@
+.costiPage {
+  padding: 1rem;
+}
+
+.costiToolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.7rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.9rem;
+}
+
+.costiFilters {
+  display: flex;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.9rem;
+}
+
+.costiTotals {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.costiCard {
+  border: 1px solid rgb(31 111 235 / 32%);
+  border-left: 3px solid var(--rm-red);
+  padding: 0.85rem;
+}
+
+.costiCardHeader {
+  display: grid;
+  gap: 0.35rem;
+  margin-bottom: 0.25rem;
+}
+
+.costiActions {
+  margin-top: 0.55rem;
+  display: flex;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.costiModalOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgb(0 0 0 / 58%);
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  z-index: 1000;
+}
+
+.costiModal {
+  width: min(860px, 100%);
+  max-height: 92vh;
+  overflow: auto;
+  padding: 1rem;
+}
+
+.costiModalHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  margin-bottom: 0.8rem;
+}
+
+.costiGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+.costiCol2 {
+  grid-column: span 2;
+}
+
+.costiModalFooter {
+  margin-top: 0.9rem;
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 700px) {
+  .costiGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .costiCol2 {
+    grid-column: span 1;
+  }
+}

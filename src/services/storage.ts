@@ -1,3 +1,4 @@
+import type { Costo, CostoCategoria, CostoPagatoDa } from "../models/Costo";
 import type { Giorno } from "../models/Giorno";
 import type { GPXFile } from "../models/GPXFile";
 import type { Prenotazione, PrenotazioneStato, PrenotazioneTipo } from "../models/Prenotazione";
@@ -5,13 +6,14 @@ import type { TrackPoint } from "../models/TrackPoint";
 import type { Viaggio } from "../models/Viaggio";
 
 const DB_NAME = "RideManagerDB";
-const DB_VERSION = 5;
+const DB_VERSION = 6;
 
 const STORE_VIAGGI = "viaggi";
 const STORE_GIORNI = "giorni";
 const STORE_GPX_FILES = "gpxFiles";
 const STORE_TRACK_POINTS = "trackPoints";
 const STORE_PRENOTAZIONI = "prenotazioni";
+const STORE_COSTI = "costi";
 const DEFAULT_VIAGGIO_STATO: Viaggio["stato"] = "PIANIFICAZIONE";
 const DEFAULT_GIORNO_STATO: Giorno["stato"] = "PIANIFICATO";
 const VIAGGIO_STATI: Viaggio["stato"][] = [
@@ -27,7 +29,8 @@ type StoreName =
   | typeof STORE_GIORNI
   | typeof STORE_GPX_FILES
   | typeof STORE_TRACK_POINTS
-  | typeof STORE_PRENOTAZIONI;
+  | typeof STORE_PRENOTAZIONI
+  | typeof STORE_COSTI;
 
 type LegacyViaggioRecord = Partial<Viaggio> & { id: string; titolo?: string };
 type LegacyGiornoRecord = Partial<Giorno> & { id: string; viaggioId?: string };
@@ -36,6 +39,12 @@ type LegacyPrenotazioneRecord = Partial<Prenotazione> & {
   viaggioId?: string;
   tipo?: string;
   stato?: string;
+};
+type LegacyCostoRecord = Partial<Costo> & {
+  id: string;
+  viaggioId?: string;
+  categoria?: string;
+  pagatoDa?: string;
 };
 
 let dbPromise: Promise<IDBDatabase> | null = null;
@@ -58,6 +67,14 @@ function isPrenotazioneTipo(value: unknown): value is PrenotazioneTipo {
 
 function isPrenotazioneStato(value: unknown): value is PrenotazioneStato {
   return value === "OPZIONE" || value === "CONFERMATA" || value === "CANCELLATA";
+}
+
+function isCostoCategoria(value: unknown): value is CostoCategoria {
+  return value === "BENZINA" || value === "HOTEL" || value === "TRAGHETTI" || value === "EXTRA";
+}
+
+function isCostoPagatoDa(value: unknown): value is CostoPagatoDa {
+  return value === "IO" || value === "LEI" || value === "DIVISO";
 }
 
 function toValidIso(value: unknown): string | null {
@@ -190,6 +207,44 @@ function normalizePrenotazione(record: LegacyPrenotazioneRecord): Prenotazione |
   };
 }
 
+function normalizeCosto(record: LegacyCostoRecord): Costo | null {
+  const nowIso = new Date().toISOString();
+  const data = toValidIso(record.data);
+  if (!data) {
+    console.warn("Costo scartato: data non valida", record);
+    return null;
+  }
+
+  const importo = toOptionalNumber(record.importo);
+  if (importo === undefined) {
+    console.warn("Costo scartato: importo non valido", record);
+    return null;
+  }
+
+  if (!isCostoCategoria(record.categoria)) {
+    console.warn("Costo scartato: categoria non valida", record);
+    return null;
+  }
+
+  return {
+    id: record.id,
+    viaggioId: typeof record.viaggioId === "string" ? record.viaggioId : "",
+    giornoId: toOptionalString(record.giornoId),
+    categoria: record.categoria,
+    titolo: typeof record.titolo === "string" ? record.titolo : "",
+    data,
+    ora: toOptionalString(record.ora),
+    valuta: "EUR",
+    importo,
+    pagatoDa: isCostoPagatoDa(record.pagatoDa) ? record.pagatoDa : "IO",
+    quotaIo: toOptionalNumber(record.quotaIo),
+    quotaLei: toOptionalNumber(record.quotaLei),
+    note: toOptionalString(record.note),
+    createdAt: toValidIso(record.createdAt) ?? nowIso,
+    updatedAt: toValidIso(record.updatedAt) ?? nowIso,
+  };
+}
+
 function requestToPromise<T>(request: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
     request.onsuccess = () => resolve(request.result);
@@ -252,6 +307,10 @@ export function initDB(): Promise<IDBDatabase> {
 
       if (!db.objectStoreNames.contains(STORE_PRENOTAZIONI)) {
         db.createObjectStore(STORE_PRENOTAZIONI, { keyPath: "id" });
+      }
+
+      if (!db.objectStoreNames.contains(STORE_COSTI)) {
+        db.createObjectStore(STORE_COSTI, { keyPath: "id" });
       }
     };
 
@@ -437,6 +496,51 @@ export async function deletePrenotazione(id: string): Promise<void> {
   await transactionToPromise(transaction);
 }
 
+export async function saveCosto(costo: Costo): Promise<void> {
+  const normalized = normalizeCosto(costo);
+  if (!normalized) {
+    throw new Error("Costo non valido");
+  }
+  await putRecord(STORE_COSTI, normalized);
+}
+
+export async function getCostiByViaggio(viaggioId: string): Promise<Costo[]> {
+  const allRecords = await getAllRecords<LegacyCostoRecord>(STORE_COSTI);
+  return allRecords
+    .map((record) => normalizeCosto(record))
+    .filter((record): record is Costo => record !== null)
+    .filter((record) => record.viaggioId === viaggioId);
+}
+
+export async function getCostiByGiorno(giornoId: string): Promise<Costo[]> {
+  const allRecords = await getAllRecords<LegacyCostoRecord>(STORE_COSTI);
+  return allRecords
+    .map((record) => normalizeCosto(record))
+    .filter((record): record is Costo => record !== null)
+    .filter((record) => record.giornoId === giornoId);
+}
+
+export async function getCosto(id: string): Promise<Costo | undefined> {
+  const db = await initDB();
+  const transaction = db.transaction(STORE_COSTI, "readonly");
+  const request = transaction.objectStore(STORE_COSTI).get(id);
+  const rawRecord = await requestToPromise(request);
+  await transactionToPromise(transaction);
+
+  if (!rawRecord) {
+    return undefined;
+  }
+
+  return normalizeCosto(rawRecord as LegacyCostoRecord) ?? undefined;
+}
+
+export async function deleteCosto(id: string): Promise<void> {
+  const db = await initDB();
+  const transaction = db.transaction(STORE_COSTI, "readwrite");
+  transaction.objectStore(STORE_COSTI).delete(id);
+  await transactionToPromise(transaction);
+}
+
 export async function deleteViaggioCascade(viaggioId: string): Promise<void> {
   const giorni = await getGiorniByViaggio(viaggioId);
 
@@ -449,6 +553,11 @@ export async function deleteViaggioCascade(viaggioId: string): Promise<void> {
   const prenotazioni = await getPrenotazioniByViaggio(viaggioId);
   for (const prenotazione of prenotazioni) {
     await deletePrenotazione(prenotazione.id);
+  }
+
+  const costi = await getCostiByViaggio(viaggioId);
+  for (const costo of costi) {
+    await deleteCosto(costo.id);
   }
 
   const db = await initDB();

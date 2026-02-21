@@ -142,26 +142,29 @@ Relazioni:
 - Prenotazioni HOTEL/TRAGHETTO con filtri, ricerca e CRUD.
 ### PARZIALE
 - Home: voci placeholder (Import GPX rapido, Impostazioni, Backup / Export).
-- Dettaglio Viaggio: tab placeholder (Costi, Media).
+- Dettaglio Viaggio: tab placeholder (Media).
 - Storage: varie query lato client via `getAll + filter` (non indicizzate).
 ### TODO
-1. Implementare tab Costi con registrazione spese e aggregazioni per viaggio/giorno.
-2. Implementare tab Media per allegati del viaggio.
-3. Implementare Backup/Restore JSON locale.
-4. Implementare ingresso rapido import GPX dalla Home.
-5. Introdurre indici/query mirate in storage per dataset grandi.
+1. Implementare tab Media per allegati del viaggio.
+2. Implementare Backup/Restore JSON locale.
+3. Implementare ingresso rapido import GPX dalla Home.
+4. Introdurre indici/query mirate in storage per dataset grandi.
 
 ## File chiave (path)
 - `src/App.tsx`
 - `src/services/storage.ts`
 - `src/services/gpxService.ts`
 - `src/services/tripStats.ts`
+- `src/models/Costo.ts`
 - `src/pages/Viaggi.tsx`
 - `src/pages/DettaglioViaggio.tsx`
 - `src/pages/Giorni.tsx`
 - `src/pages/GiornoDettaglio.tsx`
 - `src/pages/PrenotazioniViaggio.tsx`
 - `src/pages/PrenotazioneFormModal.tsx`
+- `src/pages/CostiViaggio.tsx`
+- `src/pages/CostoFormModal.tsx`
+- `src/pages/costi.css`
 - `src/utils/geo.ts`
 - `src/utils/trackSegmentation.ts`
 
