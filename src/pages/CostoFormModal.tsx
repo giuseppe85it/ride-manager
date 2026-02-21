@@ -45,6 +45,10 @@ function roundTwo(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
+function roundThree(value: number): number {
+  return Math.round(value * 1000) / 1000;
+}
+
 function numberToString(value?: number): string {
   return typeof value === "number" && Number.isFinite(value) ? String(value) : "";
 }
@@ -213,25 +217,6 @@ export default function CostoFormModal({
 
   if (!isOpen) return null;
 
-  function handleCalcolaImporto(): void {
-    const litri = toOptionalNumber(form.litri);
-    const prezzoLitro = toOptionalNumber(form.prezzoLitro);
-
-    if (litri === undefined || litri <= 0) {
-      setError("Inserisci litri validi per calcolare l'importo.");
-      return;
-    }
-
-    if (prezzoLitro === undefined || prezzoLitro <= 0) {
-      setError("Inserisci un prezzo/L valido per calcolare l'importo.");
-      return;
-    }
-
-    const importoCalcolato = roundTwo(litri * prezzoLitro);
-    setForm((current) => ({ ...current, importo: importoCalcolato.toFixed(2) }));
-    setError(null);
-  }
-
   async function handleSave(): Promise<void> {
     const dataIso = toIsoDate(form.data);
     if (!dataIso) {
@@ -267,23 +252,13 @@ export default function CostoFormModal({
         return;
       }
 
-      if (prezzoLitroInput !== undefined && prezzoLitroInput <= 0) {
-        setError("Prezzo/L deve essere maggiore di zero.");
-        return;
-      }
-
-      if (prezzoLitroInput !== undefined) {
-        importoFinale = roundTwo(litriInput * prezzoLitroInput);
-      }
-
       if (importoFinale === undefined || importoFinale <= 0) {
         setError("Importo obbligatorio e maggiore di zero.");
         return;
       }
 
       litriFinali = litriInput;
-      prezzoLitroFinale =
-        prezzoLitroInput !== undefined ? prezzoLitroInput : roundTwo(importoFinale / litriInput);
+      prezzoLitroFinale = roundThree(importoFinale / litriInput);
     } else if (isQuickPedaggi) {
       if (importoFinale === undefined || importoFinale <= 0) {
         setError("Importo obbligatorio e maggiore di zero.");
@@ -557,22 +532,10 @@ export default function CostoFormModal({
               />
             )}
 
-            {isQuickBenzina && (
-              <input
-                className="inputField"
-                type="number"
-                min={0}
-                step="0.001"
-                placeholder="Prezzo/L (opz.)"
-                value={form.prezzoLitro}
-                onChange={(event) => setForm((current) => ({ ...current, prezzoLitro: event.target.value }))}
-              />
-            )}
-
-            {isQuickBenzina && (
-              <button type="button" className="buttonGhost" onClick={handleCalcolaImporto}>
-                Calcola
-              </button>
+            {isQuickBenzina && derivedPrezzoLitro !== undefined && (
+              <p className="metaText costiCol2" style={{ margin: "0.1rem 0" }}>
+                Prezzo/L calcolato: {derivedPrezzoLitro.toFixed(3)} EUR/L
+              </p>
             )}
 
             <select
@@ -596,12 +559,6 @@ export default function CostoFormModal({
               value={form.data}
               onChange={(event) => setForm((current) => ({ ...current, data: event.target.value }))}
             />
-
-            {isQuickBenzina && !form.prezzoLitro.trim() && derivedPrezzoLitro !== undefined && (
-              <p className="metaText costiCol2" style={{ margin: "0.1rem 0" }}>
-                Prezzo/L calcolato: {derivedPrezzoLitro.toFixed(3)} EUR/L
-              </p>
-            )}
 
             {form.pagatoDa === "DIVISO" && (
               <>
