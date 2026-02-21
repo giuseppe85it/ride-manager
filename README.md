@@ -43,6 +43,19 @@ export default defineConfig([
 ])
 ```
 
+## Hook Autoupdate STATE_NOW
+
+Per abilitare gli hook locali del repository:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+Cosa succede:
+
+- `pre-commit`: esegue `node scripts/generateStateNow.cjs` e mette in stage `STATE_NOW.md`.
+- `post-commit`: esegue `node scripts/generateOpsLog.cjs` per aggiornare `ops.log`, `CHANGELOG.md` e i report in `docs/ops-log/`.
+
 You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
 
 ```js

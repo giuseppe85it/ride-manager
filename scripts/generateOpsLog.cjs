@@ -128,18 +128,3 @@ const changelogBody = changelogExisting.startsWith(changelogHeader)
   ? changelogExisting.slice(changelogHeader.length)
   : changelogExisting;
 fs.writeFileSync(changelogPath, `${changelogBase}${changelogEntry}${changelogBody}`, "utf8");
-
-const statePath = path.join(repoRoot, "STATE_NOW.md");
-const stateContent =
-  [
-    "# STATE NOW",
-    "",
-    `- Last update: ${readableTimestamp}`,
-    `- Last commit: ${commitHash}`,
-    `- Last message: ${commitMessage}`,
-    `- Last report: ${reportRelativePath}`,
-    "- Last changed files:",
-    ...fileList.map((file) => `  - ${file}`),
-    "",
-  ].join("\n");
-fs.writeFileSync(statePath, stateContent, "utf8");

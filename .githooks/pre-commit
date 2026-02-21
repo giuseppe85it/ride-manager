@@ -1,0 +1,3 @@
+#!/bin/sh
+node scripts/generateStateNow.cjs || exit 1
+git add STATE_NOW.md
