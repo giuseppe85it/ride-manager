@@ -278,6 +278,12 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
   const [routeMode, setRouteMode] = useState<"direct" | "curvy">("direct");
   const [originText, setOriginText] = useState("");
   const [destinationText, setDestinationText] = useState("");
+  const [plannedMapsUrlDraft, setPlannedMapsUrlDraft] = useState("");
+  const [isSavingPlannedMapsUrl, setIsSavingPlannedMapsUrl] = useState(false);
+  const [showGoogleMapsPreview, setShowGoogleMapsPreview] = useState(false);
+  const [googleMapsPreviewState, setGoogleMapsPreviewState] = useState<"idle" | "loading" | "loaded" | "error">(
+    "idle",
+  );
   const [originSuggestions, setOriginSuggestions] = useState<GeocodeSuggestion[]>([]);
   const [destinationSuggestions, setDestinationSuggestions] = useState<GeocodeSuggestion[]>([]);
   const [plannerSearch, setPlannerSearch] = useState<PlannerSearchState | null>(null);
@@ -368,6 +374,7 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
 
     setOriginText(giorno.plannedOriginText ?? "");
     setDestinationText(giorno.plannedDestinationText ?? "");
+    setPlannedMapsUrlDraft(giorno.plannedMapsUrl ?? "");
     if (giorno.plannedRoute) {
       setRouteMode(giorno.plannedRoute.modeRequested);
     }
@@ -1059,6 +1066,47 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
     window.open(giorno.plannedMapsUrl, "_blank", "noopener,noreferrer");
   }
 
+  function isValidHttpUrl(value: string): boolean {
+    return /^https?:\/\//i.test(value.trim());
+  }
+
+  async function handleSavePlannedMapsUrlFromDraft(): Promise<void> {
+    if (!giorno) {
+      return;
+    }
+
+    const trimmed = plannedMapsUrlDraft.trim();
+    if (trimmed && !isValidHttpUrl(trimmed)) {
+      setError("Il link Google Maps deve iniziare con http.");
+      return;
+    }
+
+    setIsSavingPlannedMapsUrl(true);
+    setError(null);
+    try {
+      await persistGiorno({
+        ...giorno,
+        plannedMapsUrl: trimmed || undefined,
+      });
+    } finally {
+      setIsSavingPlannedMapsUrl(false);
+    }
+  }
+
+  function handleOpenGoogleMapsFromDraft(): void {
+    const trimmed = plannedMapsUrlDraft.trim();
+    if (!trimmed) {
+      setError("Incolla il link Google Maps del giorno.");
+      return;
+    }
+    if (!isValidHttpUrl(trimmed)) {
+      setError("Il link Google Maps deve iniziare con http.");
+      return;
+    }
+    setError(null);
+    window.open(trimmed, "_blank", "noopener,noreferrer");
+  }
+
   function handleOpenHotelMap(): void {
     const queryParts = [hotelPrenotazione?.titolo, hotelPrenotazione?.localita, hotelPrenotazione?.indirizzo]
       .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
@@ -1159,6 +1207,109 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
             Timeline segments: {timelineSegmentsCount}
           </p>
         )}
+
+        <div className="card detailCard" style={{ marginBottom: "1rem" }}>
+          <h2 style={{ margin: "0 0 0.6rem 0" }}>Pianificazione (Google Maps)</h2>
+          <p className="metaText" style={{ margin: "0 0 0.6rem 0" }}>
+            Fonte primaria del giorno: incolla il link Google Maps e usa VAI.
+          </p>
+          <div style={{ display: "grid", gap: "0.6rem" }}>
+            <input
+              type="url"
+              className="inputField"
+              value={plannedMapsUrlDraft}
+              onChange={(event) => {
+                setPlannedMapsUrlDraft(event.target.value);
+                if (showGoogleMapsPreview) {
+                  setGoogleMapsPreviewState("idle");
+                }
+              }}
+              onBlur={() => void handleSavePlannedMapsUrlFromDraft()}
+              placeholder="Incolla URL Google Maps del giorno"
+            />
+            <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "center" }}>
+              <button
+                type="button"
+                className="buttonPrimary"
+                onClick={handleOpenGoogleMapsFromDraft}
+                disabled={!plannedMapsUrlDraft.trim()}
+              >
+                VAI (Google Maps)
+              </button>
+              <button
+                type="button"
+                className="buttonGhost"
+                onClick={() => void handleSavePlannedMapsUrlFromDraft()}
+                disabled={isSavingPlannedMapsUrl}
+              >
+                {isSavingPlannedMapsUrl ? "Salvataggio..." : "Salva link"}
+              </button>
+              <label className="metaText" style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem" }}>
+                <input
+                  type="checkbox"
+                  checked={showGoogleMapsPreview}
+                  onChange={(event) => {
+                    const nextValue = event.target.checked;
+                    setShowGoogleMapsPreview(nextValue);
+                    setGoogleMapsPreviewState(nextValue ? "loading" : "idle");
+                  }}
+                />
+                Mostra anteprima
+              </label>
+            </div>
+
+            {showGoogleMapsPreview && (
+              <div>
+                {isValidHttpUrl(plannedMapsUrlDraft) ? (
+                  <div>
+                    <div
+                      style={{
+                        height: 380,
+                        width: "100%",
+                        border: "1px solid #2A3445",
+                        borderRadius: 12,
+                        overflow: "hidden",
+                        background: "#0F172A",
+                      }}
+                    >
+                      <iframe
+                        title="Anteprima Google Maps"
+                        src={plannedMapsUrlDraft.trim()}
+                        style={{ width: "100%", height: "100%", border: 0 }}
+                        loading="lazy"
+                        referrerPolicy="no-referrer-when-downgrade"
+                        onLoad={() => setGoogleMapsPreviewState("loaded")}
+                        onError={() => setGoogleMapsPreviewState("error")}
+                      />
+                    </div>
+                    <p className="metaText" style={{ margin: "0.55rem 0 0 0" }}>
+                      Se l&apos;anteprima non si carica, Google blocca l&apos;incorporamento: usa VAI.
+                    </p>
+                    {googleMapsPreviewState === "error" && (
+                      <p className="errorText" style={{ margin: "0.35rem 0 0 0" }}>
+                        Anteprima non disponibile. Usa VAI (Google Maps).
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <p className="metaText" style={{ margin: 0 }}>
+                    Inserisci un link Google Maps valido (http/https) per l&apos;anteprima. Se l&apos;anteprima non si
+                    carica, usa VAI.
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <details className="card detailCard" style={{ marginBottom: "1rem" }}>
+          <summary style={{ cursor: "pointer", fontWeight: 700, marginBottom: "0.6rem" }}>
+            Avanzate (opzionale)
+          </summary>
+          <p className="metaText" style={{ margin: "0 0 0.75rem 0" }}>
+            Timeline RIDE/FERRY e pianificazione OSRM/Nominatim restano disponibili, ma la fonte primaria e il link
+            Google Maps del giorno.
+          </p>
 
         <div className="card detailCard" style={{ marginBottom: "1rem" }}>
           <div
@@ -1756,6 +1907,7 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
               </>
             )}
           </div>
+        </details>
         </details>
 
         {hotelPrenotazione && (
