@@ -13,6 +13,7 @@ Data aggiornamento: 22 02 2026
 - `dataInizio: string`
 - `dataFine: string`
 - `area: string`
+- `partecipanti?: string[]`
 - `valuta: "EUR"`
 - `stato: "PIANIFICAZIONE" | "ATTIVO" | "CONCLUSO" | "ARCHIVIATO"`
 - `note?: string`
@@ -112,6 +113,7 @@ Relazioni:
 - `initDB(): Promise<IDBDatabase>`
 - `saveViaggio(viaggio: Viaggio): Promise<void>`
 - `getViaggi(): Promise<Viaggio[]>`
+- `getViaggioById(viaggioId: string): Promise<Viaggio | undefined>`
 - `saveGiorno(giorno: Giorno): Promise<void>`
 - `getGiorniByViaggio(viaggioId: string): Promise<Giorno[]>`
 - `getGiorno(giornoId: string): Promise<Giorno | undefined>`
@@ -157,25 +159,15 @@ Relazioni:
 - Reverse geocoding inizio/fine percorso con fallback sicuro.
 - Dashboard Viaggio read-only con aggregazioni reali.
 - Prenotazioni HOTEL/TRAGHETTO con filtri, ricerca e CRUD.
-- Home: Import GPX rapido BMW one-click con auto-assign a Viaggio/Giorno per data (crea Viaggio/Giorno se mancanti).
-- Tab Giorni: card con azioni top-right (menu "..." + elimina) allineate e cliccabili senza sovrapporsi alla pill stato.
-- UI lista Giorni: card migliorate con "Giorno N", data IT in evidenza e azioni allineate.
-- Partecipanti spostati da globali a per-viaggio (`viaggio.partecipanti`): gestione nel DettaglioViaggio con autosave e fallback solo UI (`Peppe/Elvira`) se non impostati.
-- Tab Costi: card "Saldo (50/50)" sui soli confermati (pagati) con warning per voci pagate non assegnate (PAYER?/split non valido).
-- Saldo 50/50 Costi: compatibile con payer salvato come nome partecipante reale oppure legacy IO/LEI.
-- Saldo 50/50 Costi: calcolato direttamente dalle quote confermate dei 2 partecipanti (manuali + prenotazioni pagate), con fallback retrocompatibile IO/LEI.
-- Costi/Prenotazioni: select payer usa i partecipanti del viaggio corrente; `DIVISO` abilitato solo con 2 partecipanti (split >2 non supportato).
 ### PARZIALE
-- Home: voci placeholder parziali (Backup / Export).
+- Home: voci placeholder (Backup / Export).
 - Dettaglio Viaggio: tab placeholder (Costi, Media).
 - Storage: varie query lato client via `getAll + filter` (non indicizzate).
 ### TODO
 1. Implementare tab Costi con registrazione spese e aggregazioni per viaggio/giorno.
 2. Implementare tab Media per allegati del viaggio.
 3. Implementare Backup/Restore JSON locale.
-4. Rifinire feedback UI import GPX rapido (toast/progress/errori per file multipli).
 5. Introdurre indici/query mirate in storage per dataset grandi.
-6. Estendere split costi/prenotazioni e saldo oltre 2 partecipanti (oggi solo primi 2).
 
 ## File chiave (path)
 - `src/App.tsx`

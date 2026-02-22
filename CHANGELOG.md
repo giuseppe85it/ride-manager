@@ -1,5 +1,137 @@
 # CHANGELOG
 
+## 2026-02-22 17:17:04 - feat: participants are per-trip (not global)
+- Commit: e6688967a6f06b8169e963f7ea2f2d935333c2b8
+- Report: docs/ops-log/2026-02-22_17-17.md
+- Files changed:
+  - STATE_NOW.md
+  - src/models/Viaggio.ts
+  - src/pages/CostiViaggio.tsx
+  - src/pages/CostoFormModal.tsx
+  - src/pages/DettaglioViaggio.tsx
+  - src/pages/PrenotazioneFormModal.tsx
+  - src/services/storage.ts
+## 2026-02-22 16:46:28 - fix: saldo 50/50 based on confirmed participant quotes
+- Commit: 0c47f736ef148852ea37fd7ac6cdca6e8129c1fd
+- Report: docs/ops-log/2026-02-22_16-46.md
+- Files changed:
+  - STATE_NOW.md
+  - src/pages/CostiViaggio.tsx
+## 2026-02-22 16:36:03 - fix: 50/50 balance counts booking costoTotale correctly
+- Commit: ec3a3d8fa0db6f13c0016fe8af2bf11be13e42d5
+- Report: docs/ops-log/2026-02-22_16-36.md
+- Files changed:
+  - STATE_NOW.md
+  - src/pages/CostiViaggio.tsx
+## 2026-02-22 16:24:44 - fix: 50/50 balance uses real participants labels (IO/LEI compatible)
+- Commit: fb6d4310fd1d3592cd73cbee1fbc5fd4f9f0e743
+- Report: docs/ops-log/2026-02-22_16-24.md
+- Files changed:
+  - STATE_NOW.md
+  - src/pages/CostiViaggio.tsx
+## 2026-02-22 16:13:41 - feat: add 50/50 balance summary in travel costs
+- Commit: 4ae01fcb1af6a5448bfaea77d3c4dba44ca4284f
+- Report: docs/ops-log/2026-02-22_16-13.md
+- Files changed:
+  - STATE_NOW.md
+  - src/pages/CostiViaggio.tsx
+## 2026-02-22 15:51:26 - ui: improve days list clarity (day number, date, actions)
+- Commit: c0bcfe9ff9663fb1d0ec6fa4a1aaa0ca2d09b5cd
+- Report: docs/ops-log/2026-02-22_15-51.md
+- Files changed:
+  - STATE_NOW.md
+  - src/pages/Giorni.tsx
+## 2026-02-22 15:40:16 - feat: fix day card actions + one-click BMW GPX import auto-assign
+- Commit: 5fd64fa1def614048c734ab26e88338c0c466c76
+- Report: docs/ops-log/2026-02-22_15-40.md
+- Files changed:
+  - STATE_NOW.md
+  - src/pages/Giorni.tsx
+  - src/pages/Home.tsx
+  - src/services/gpxService.ts
+## 2026-02-22 14:54:25 - docs: note Google link to local map reconstruction flow
+- Commit: be84119a8c0ea2428275c4c05b1aed4b9383a375
+- Report: docs/ops-log/2026-02-22_14-54.md
+- Files changed:
+  - (no file changes)
+## 2026-02-22 14:53:36 - feat: generate planned route map from Google Maps link
+- Commit: 726f56de9dcb9f59213199c8125db85fb8113a85
+- Report: docs/ops-log/2026-02-22_14-53.md
+- Files changed:
+  - server/index.js
+  - src/models/Giorno.ts
+  - src/pages/GiornoDettaglio.tsx
+  - src/services/storage.ts
+## 2026-02-22 14:33:25 - docs: note Google Maps primary planning flow for giorno
+- Commit: 5821e241e97bfb6a3740ab0636cbe2451b655eb2
+- Report: docs/ops-log/2026-02-22_14-33_1.md
+- Files changed:
+  - (no file changes)
+## 2026-02-22 14:33:08 - feat: make Google Maps URL the primary day planning flow
+- Commit: 3ef83a732b320ea140690ca1c75ae4d10c03fc5f
+- Report: docs/ops-log/2026-02-22_14-33.md
+- Files changed:
+  - src/pages/GiornoDettaglio.tsx
+## 2026-02-22 13:06:32 - docs: note day title edit menu action works
+- Commit: 630451c5516ce93f987b81bbf4981b7505428ce5
+- Report: docs/ops-log/2026-02-22_13-06_1.md
+- Files changed:
+  - (no file changes)
+## 2026-02-22 13:06:15 - fix: make day title edit action open modal reliably
+- Commit: 824c27514a6ad7b549d53bd06560f97b7348b6a1
+- Report: docs/ops-log/2026-02-22_13-06.md
+- Files changed:
+  - src/pages/Giorni.tsx
+## 2026-02-22 13:00:20 - docs: note day card overflow menu edit title
+- Commit: 99449c7cca07bee4a982634bdf404a7d215c9143
+- Report: docs/ops-log/2026-02-22_13-00_1.md
+- Files changed:
+  - (no file changes)
+## 2026-02-22 13:00:03 - feat: add day card overflow menu with edit title
+- Commit: 6fa495a12b1cdeb00d1fe26bf9b0bebaf23b16da
+- Report: docs/ops-log/2026-02-22_13-00.md
+- Files changed:
+  - src/pages/Giorni.tsx
+## 2026-02-22 12:48:28 - docs: note quick ride-to-port action in day timeline
+- Commit: 20472bba1b6cd70bf1931d54cc771f7b45889393
+- Report: docs/ops-log/2026-02-22_12-48_1.md
+- Files changed:
+  - (no file changes)
+## 2026-02-22 12:48:07 - feat: add quick ride-to-port action in day timeline
+- Commit: 6d507d02ae9d5d80daa8f0da266d3a0a13cbdc3a
+- Report: docs/ops-log/2026-02-22_12-48.md
+- Files changed:
+  - src/pages/GiornoDettaglio.tsx
+## 2026-02-22 12:22:16 - aggiornamento
+- Commit: 282dbfdef4e689f08d70665f478bf45f02aae5a6
+- Report: docs/ops-log/2026-02-22_12-22.md
+- Files changed:
+  - CHANGELOG.md
+  - docs/ops-log/2026-02-20_16-56.md
+  - docs/ops-log/2026-02-21_18-00.md
+  - docs/ops-log/2026-02-21_18-11.md
+  - docs/ops-log/2026-02-21_18-27.md
+  - docs/ops-log/2026-02-21_18-41.md
+  - docs/ops-log/2026-02-21_19-19.md
+  - docs/ops-log/2026-02-21_20-39.md
+  - docs/ops-log/2026-02-21_20-44.md
+  - docs/ops-log/2026-02-21_21-39.md
+  - docs/ops-log/2026-02-21_22-08.md
+  - docs/ops-log/2026-02-22_10-41.md
+  - docs/ops-log/2026-02-22_11-13.md
+  - docs/ops-log/2026-02-22_11-24.md
+  - docs/ops-log/2026-02-22_11-39.md
+  - docs/ops-log/2026-02-22_11-40.md
+  - docs/ops-log/2026-02-22_11-51.md
+  - docs/ops-log/2026-02-22_12-01.md
+  - docs/ops-log/2026-02-22_12-02.md
+  - docs/ops-log/2026-02-22_12-11.md
+  - docs/ops-log/2026-02-22_12-12.md
+  - docs/ops-log/2026-02-22_12-20.md
+  - docs/ops-log/2026-02-22_12-20_1.md
+  - ops.log
+  - package-lock.json
+  - package.json
 ## 2026-02-22 12:20:41 - docs: note timeline planner priority over legacy planning
 - Commit: 86b8e6b79a2b51c13b30eecc26d4dc7213024cdd
 - Report: docs/ops-log/2026-02-22_12-20_1.md
