@@ -1,5 +1,30 @@
 # CHANGELOG
 
+## 2026-02-22 19:12:09 - aggiornamento
+- Commit: 39c21df36cac292c551588dffb433be4df6f70f0
+- Report: docs/ops-log/2026-02-22_19-12.md
+- Files changed:
+  - CHANGELOG.md
+  - STATE_NOW.md
+  - docs/ops-log/2026-02-22_12-22.md
+  - docs/ops-log/2026-02-22_12-48.md
+  - docs/ops-log/2026-02-22_12-48_1.md
+  - docs/ops-log/2026-02-22_13-00.md
+  - docs/ops-log/2026-02-22_13-00_1.md
+  - docs/ops-log/2026-02-22_13-06.md
+  - docs/ops-log/2026-02-22_13-06_1.md
+  - docs/ops-log/2026-02-22_14-33.md
+  - docs/ops-log/2026-02-22_14-33_1.md
+  - docs/ops-log/2026-02-22_14-53.md
+  - docs/ops-log/2026-02-22_14-54.md
+  - docs/ops-log/2026-02-22_15-40.md
+  - docs/ops-log/2026-02-22_15-51.md
+  - docs/ops-log/2026-02-22_16-13.md
+  - docs/ops-log/2026-02-22_16-24.md
+  - docs/ops-log/2026-02-22_16-36.md
+  - docs/ops-log/2026-02-22_16-46.md
+  - docs/ops-log/2026-02-22_17-17.md
+  - ops.log
 ## 2026-02-22 17:17:04 - feat: participants are per-trip (not global)
 - Commit: e6688967a6f06b8169e963f7ea2f2d935333c2b8
 - Report: docs/ops-log/2026-02-22_17-17.md
