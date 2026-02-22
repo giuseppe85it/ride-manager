@@ -30,6 +30,7 @@ interface BookingCost {
   data: string;
   ora?: string;
   importo: number;
+  costoTotale?: number;
   valuta: "EUR";
   pagato: boolean;
   pagatoDa?: BookingPagatoDa;
@@ -59,6 +60,7 @@ interface Balance50Contribution {
   nonAssegnato: number;
   missingPayer: boolean;
   invalidSplit: boolean;
+  invalidAmount: boolean;
 }
 
 interface BalancePayerLabels {
@@ -112,6 +114,18 @@ function getManualQuote(costo: Costo): { quotaIo: number; quotaLei: number } {
 }
 
 function getManualBalanceContribution(costo: Costo): Balance50Contribution {
+  if (!Number.isFinite(costo.importo) || costo.importo <= 0) {
+    return {
+      included: false,
+      pagatoIo: 0,
+      pagatoLei: 0,
+      nonAssegnato: 0,
+      missingPayer: false,
+      invalidSplit: false,
+      invalidAmount: true,
+    };
+  }
+
   if (costo.pagatoDa === "IO") {
     return {
       included: true,
@@ -120,6 +134,7 @@ function getManualBalanceContribution(costo: Costo): Balance50Contribution {
       nonAssegnato: 0,
       missingPayer: false,
       invalidSplit: false,
+      invalidAmount: false,
     };
   }
 
@@ -131,6 +146,7 @@ function getManualBalanceContribution(costo: Costo): Balance50Contribution {
       nonAssegnato: 0,
       missingPayer: false,
       invalidSplit: false,
+      invalidAmount: false,
     };
   }
 
@@ -144,6 +160,7 @@ function getManualBalanceContribution(costo: Costo): Balance50Contribution {
       nonAssegnato: costo.importo,
       missingPayer: false,
       invalidSplit: true,
+      invalidAmount: false,
     };
   }
 
@@ -155,6 +172,7 @@ function getManualBalanceContribution(costo: Costo): Balance50Contribution {
       nonAssegnato: costo.importo,
       missingPayer: false,
       invalidSplit: true,
+      invalidAmount: false,
     };
   }
 
@@ -165,6 +183,7 @@ function getManualBalanceContribution(costo: Costo): Balance50Contribution {
     nonAssegnato: 0,
     missingPayer: false,
     invalidSplit: false,
+    invalidAmount: false,
   };
 }
 
@@ -284,6 +303,22 @@ function getBookingQuoteResult(booking: BookingCost): BookingQuoteResult {
 }
 
 function getBookingBalanceContribution(booking: BookingCost): Balance50Contribution {
+  const amount =
+    typeof booking.costoTotale === "number" && Number.isFinite(booking.costoTotale)
+      ? booking.costoTotale
+      : booking.importo;
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return {
+      included: false,
+      pagatoIo: 0,
+      pagatoLei: 0,
+      nonAssegnato: 0,
+      missingPayer: false,
+      invalidSplit: false,
+      invalidAmount: true,
+    };
+  }
+
   const quoteResult = getBookingQuoteResult(booking);
   if (quoteResult.included) {
     return {
@@ -293,6 +328,7 @@ function getBookingBalanceContribution(booking: BookingCost): Balance50Contribut
       nonAssegnato: 0,
       missingPayer: false,
       invalidSplit: false,
+      invalidAmount: false,
     };
   }
 
@@ -300,9 +336,10 @@ function getBookingBalanceContribution(booking: BookingCost): Balance50Contribut
     included: false,
     pagatoIo: 0,
     pagatoLei: 0,
-    nonAssegnato: booking.importo,
+    nonAssegnato: amount,
     missingPayer: quoteResult.missingPayer,
     invalidSplit: quoteResult.invalidSplit,
+    invalidAmount: false,
   };
 }
 
@@ -345,6 +382,7 @@ function getManualBalanceContributionWithLabels(
       nonAssegnato: 0,
       missingPayer: false,
       invalidSplit: false,
+      invalidAmount: false,
     };
   }
 
@@ -356,6 +394,7 @@ function getManualBalanceContributionWithLabels(
       nonAssegnato: 0,
       missingPayer: false,
       invalidSplit: false,
+      invalidAmount: false,
     };
   }
 
@@ -367,6 +406,7 @@ function getManualBalanceContributionWithLabels(
       nonAssegnato: costo.importo,
       missingPayer: true,
       invalidSplit: false,
+      invalidAmount: false,
     };
   }
 
@@ -409,6 +449,7 @@ function getBookingBalanceContributionWithLabels(
       nonAssegnato: booking.importo,
       missingPayer: true,
       invalidSplit: false,
+      invalidAmount: false,
     };
   }
 
@@ -530,6 +571,7 @@ export default function CostiViaggio({ viaggioId }: CostiViaggioProps) {
           data: prenotazione.dataInizio,
           ora: prenotazione.oraInizio,
           importo,
+          costoTotale: importo,
           valuta: prenotazione.valuta,
           pagato: prenotazione.pagato === true,
           pagatoDa: getBookingPayer(prenotazione.pagatoDa),
@@ -614,6 +656,7 @@ export default function CostiViaggio({ viaggioId }: CostiViaggioProps) {
     let saldo50PagatoLei = 0;
     let saldo50NonAssegnati = 0;
     let saldo50NonAssegnatiCount = 0;
+    let saldo50InvalidAmountCount = 0;
 
     for (const category of visibleCategories) {
       for (const manualItem of manualByCategory[category]) {
@@ -629,8 +672,12 @@ export default function CostiViaggio({ viaggioId }: CostiViaggioProps) {
           saldo50PagatoIo += manualBalance.pagatoIo;
           saldo50PagatoLei += manualBalance.pagatoLei;
         } else {
-          saldo50NonAssegnati += manualBalance.nonAssegnato;
-          saldo50NonAssegnatiCount += 1;
+          if (manualBalance.invalidAmount) {
+            saldo50InvalidAmountCount += 1;
+          } else {
+            saldo50NonAssegnati += manualBalance.nonAssegnato;
+            saldo50NonAssegnatiCount += 1;
+          }
         }
       }
 
@@ -657,8 +704,12 @@ export default function CostiViaggio({ viaggioId }: CostiViaggioProps) {
           saldo50PagatoIo += bookingBalance.pagatoIo;
           saldo50PagatoLei += bookingBalance.pagatoLei;
         } else {
-          saldo50NonAssegnati += bookingBalance.nonAssegnato;
-          saldo50NonAssegnatiCount += 1;
+          if (bookingBalance.invalidAmount) {
+            saldo50InvalidAmountCount += 1;
+          } else {
+            saldo50NonAssegnati += bookingBalance.nonAssegnato;
+            saldo50NonAssegnatiCount += 1;
+          }
         }
       }
     }
@@ -667,6 +718,9 @@ export default function CostiViaggio({ viaggioId }: CostiViaggioProps) {
     const saldo50QuotaPerTesta = saldo50TotalePagato / 2;
     const rawSaldo50 = saldo50PagatoIo - saldo50QuotaPerTesta;
     const saldo50Valore = Math.abs(rawSaldo50) <= 0.01 ? 0 : rawSaldo50;
+    const saldo50AssignedPaidTotal = saldo50PagatoIo + saldo50PagatoLei + saldo50NonAssegnati;
+    const saldo50MismatchConfirmed =
+      Math.abs(saldo50AssignedPaidTotal - totaleConfermato) > 0.01;
 
     return {
       visibleCategories,
@@ -688,6 +742,9 @@ export default function CostiViaggio({ viaggioId }: CostiViaggioProps) {
       saldo50Valore,
       saldo50NonAssegnati,
       saldo50NonAssegnatiCount,
+      saldo50InvalidAmountCount,
+      saldo50AssignedPaidTotal,
+      saldo50MismatchConfirmed,
     };
   }, [bookingCosts, categoriaFiltro, costi, payerLabels]);
 
@@ -853,6 +910,21 @@ export default function CostiViaggio({ viaggioId }: CostiViaggioProps) {
             Attenzione: {formatEuro(analytics.saldo50NonAssegnati)} pagati non assegnati (
             {analytics.saldo50NonAssegnatiCount} voci: PAYER? / split non valido). Il saldo esclude queste voci.
           </p>
+        </div>
+      )}
+      {(analytics.saldo50InvalidAmountCount > 0 || analytics.saldo50MismatchConfirmed) && (
+        <div className="card" style={{ padding: "0.75rem", marginBottom: "0.8rem", borderColor: "#E11D48" }}>
+          {analytics.saldo50InvalidAmountCount > 0 && (
+            <p className="metaText" style={{ margin: "0 0 0.25rem 0", color: "#fb7185" }}>
+              Attenzione: {analytics.saldo50InvalidAmountCount} voci confermate hanno importo non valido nel saldo.
+            </p>
+          )}
+          {analytics.saldo50MismatchConfirmed && (
+            <p className="metaText" style={{ margin: 0, color: "#fb7185" }}>
+              Mismatch: il saldo sta conteggiando {formatEuro(analytics.saldo50AssignedPaidTotal)} ma il Totale
+              CONFERMATO e {formatEuro(analytics.totaleConfermato)}. Controlla payer/importi.
+            </p>
+          )}
         </div>
       )}
 
