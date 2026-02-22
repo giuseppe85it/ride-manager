@@ -1049,7 +1049,8 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
     ) ?? null;
   const canUseHotelForDestination = Boolean(hotelDestinationCandidate);
   const dayPlan = giorno?.dayPlan;
-  const hasTimelineSegments = Boolean(dayPlan && dayPlan.segments.length > 0);
+  const timelineSegmentsCount = dayPlan?.segments.length ?? 0;
+  const hasTimelineSegments = timelineSegmentsCount > 0;
   const ferryPrenotazioniById = useMemo(
     () =>
       new Map(
@@ -1075,8 +1076,13 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
           </button>
           <h1 className="pageTitle">Giorno dettaglio</h1>
         </div>
+        {import.meta.env.DEV && (
+          <p className="metaText" style={{ margin: "0 0 0.75rem 0" }}>
+            Timeline segments: {timelineSegmentsCount}
+          </p>
+        )}
 
-        {!hasTimelineSegments && <div className="card detailCard" style={{ marginBottom: "1rem" }}>
+        <div className="card detailCard" style={{ marginBottom: "1rem" }}>
           <div
             style={{
               display: "flex",
@@ -1114,9 +1120,16 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
           </div>
 
           {!dayPlan || dayPlan.segments.length === 0 ? (
-            <p className="metaText" style={{ margin: "0 0 0.75rem 0" }}>
-              Nessun segmento timeline. Aggiungi una tratta moto o un traghetto.
-            </p>
+            <div style={{ display: "grid", gap: "0.5rem", marginBottom: "0.75rem" }}>
+              <p className="metaText" style={{ margin: 0 }}>
+                Nessun segmento timeline. Aggiungi una tratta moto o un traghetto.
+              </p>
+              <div>
+                <button type="button" className="buttonPrimary" onClick={() => void handleAddRideSegment()}>
+                  Crea timeline
+                </button>
+              </div>
+            </div>
           ) : (
             <div style={{ display: "grid", gap: "0.75rem", marginBottom: "0.75rem" }}>
               {dayPlan.segments.map((segment, index) => {
@@ -1477,9 +1490,12 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
               <p className="metaText">Nessuna tratta moto calcolata nel planner.</p>
             )}
           </div>
-        </div>}
+        </div>
 
-        <div className="card detailCard" style={{ marginBottom: "1rem" }}>
+        <details className="card detailCard" style={{ marginBottom: "1rem" }}>
+          <summary style={{ cursor: "pointer", fontWeight: 700, marginBottom: "0.6rem" }}>
+            Pianificazione legacy (opzionale)
+          </summary>
           <h2 style={{ margin: "0 0 0.6rem 0" }}>Pianificazione</h2>
           <p className="metaText" style={{ margin: "0 0 0.6rem 0" }}>
             Routing locale OSRM con geocoding Nominatim (input testo).
@@ -1642,7 +1658,7 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
               </>
             )}
           </div>
-        </div>
+        </details>
 
         {hotelPrenotazione && (
           <div className="card detailCard" style={{ marginBottom: "1rem" }}>
