@@ -1214,6 +1214,9 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
                   plannerSearch.suggestions.length > 0;
 
                 if (segment.type === "RIDE") {
+                  const rideStart = computedTimes?.start ?? "\u2014";
+                  const rideEnd = computedTimes?.end ?? "\u2014";
+                  const rideTimeRange = `${rideStart} \u2192 ${rideEnd}`;
                   return (
                     <div key={segment.id} className="card detailCard" style={{ padding: "0.75rem" }}>
                       <div
@@ -1407,13 +1410,16 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
                           Mode applicato: {segment.modeApplied ?? "\u2014"}
                         </p>
                         <p className="metaText" style={{ margin: 0 }}>
-                          Orario stimato: {computedTimes?.start ?? "\u2014"} -> {computedTimes?.end ?? "\u2014"}
+                          Orario stimato: {rideTimeRange}
                         </p>
                       </div>
                     </div>
                   );
                 }
 
+                const ferryStart = computedTimes?.start ?? segment.departTimeLocal ?? "\u2014";
+                const ferryEnd = computedTimes?.end ?? segment.arriveTimeLocal ?? "\u2014";
+                const ferryTimeRange = `${ferryStart} \u2192 ${ferryEnd}`;
                 return (
                   <div key={segment.id} className="card detailCard" style={{ padding: "0.75rem" }}>
                     <div
@@ -1503,8 +1509,7 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
                     </div>
 
                     <p className="metaText" style={{ margin: "0.55rem 0 0 0" }}>
-                      Orario stimato: {computedTimes?.start ?? segment.departTimeLocal ?? "\u2014"} ->{" "}
-                      {computedTimes?.end ?? segment.arriveTimeLocal ?? "\u2014"}
+                      Orario stimato: {ferryTimeRange}
                     </p>
                   </div>
                 );
