@@ -286,8 +286,13 @@ export default function Giorni({ viaggioId, onBack, onOpenGiorno, embedded = fal
                 type="button"
                 aria-label="Azioni giorno"
                 onClick={(event) => {
+                  event.preventDefault();
                   event.stopPropagation();
                   setMenuOpenForDayId((current) => (current === giorno.id ? null : giorno.id));
+                }}
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
                 }}
                 style={{
                   position: "absolute",
@@ -317,6 +322,10 @@ export default function Giorni({ viaggioId, onBack, onOpenGiorno, embedded = fal
                 <div
                   className="card"
                   onClick={(event) => event.stopPropagation()}
+                  onMouseDown={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                  }}
                   style={{
                     position: "absolute",
                     top: "2.55rem",
@@ -331,8 +340,13 @@ export default function Giorni({ viaggioId, onBack, onOpenGiorno, embedded = fal
                     type="button"
                     className="itemButton"
                     onClick={(event) => {
+                      event.preventDefault();
                       event.stopPropagation();
                       openEditTitleModal(giorno);
+                    }}
+                    onMouseDown={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
                     }}
                   >
                     Modifica titolo
