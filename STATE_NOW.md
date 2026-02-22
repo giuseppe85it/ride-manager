@@ -139,6 +139,8 @@ Relazioni:
 - `deleteCosto(id: string): Promise<void>`
 - `getImpostazioniApp(): Promise<ImpostazioniApp | undefined>`
 - `saveImpostazioniApp(data: ImpostazioniApp): Promise<void>`
+- `exportBackupJSON(): Promise<BackupPayload>`
+- `restoreFromBackupJSON(payload: BackupPayload): Promise<void>`
 - `deleteViaggioCascade(viaggioId: string): Promise<void>`
 
 ## UI flow (pagine e navigazione reale)
@@ -159,11 +161,7 @@ Relazioni:
 - Reverse geocoding inizio/fine percorso con fallback sicuro.
 - Dashboard Viaggio read-only con aggregazioni reali.
 - Prenotazioni HOTEL/TRAGHETTO con filtri, ricerca e CRUD.
-- Costi: categorie `PRANZO` e `CENA` supportate (modello, validazione storage, modale inserimento, filtri/breakdown).
-- Partecipanti per viaggio: gestione spostata nel menu azioni (`⋯`) del DettaglioViaggio con modale dedicato (non piu' sempre visibile in pagina).
-- Backup/Restore locale JSON completo: export/import di tutti gli store IndexedDB (`viaggi`, `giorni`, `gpxFiles`, `trackPoints`, `prenotazioni`, `costi`, `impostazioni`) con metadata e restore in sovrascrittura.
 ### PARZIALE
-- Home: voci placeholder (Backup / Export).
 - Dettaglio Viaggio: tab placeholder (Costi, Media).
 - Storage: varie query lato client via `getAll + filter` (non indicizzate).
 ### TODO

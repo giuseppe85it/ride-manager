@@ -449,3 +449,36 @@
   - docs/ops-log/2026-02-22_16-46.md
   - docs/ops-log/2026-02-22_17-17.md
   - ops.log
+## 2026-02-22 20:37:16
+- Commit: de25d0e43b72027bf87a505b6eafc076e3a5d0f3
+- Message: AGGIORNAMENTO
+- Report: docs/ops-log/2026-02-22_20-37.md
+- Modified files:
+  - CHANGELOG.md
+  - docs/ops-log/2026-02-22_19-12.md
+  - ops.log
+## 2026-02-22 21:03:19
+- Commit: 17c028969ceaf641d6d8870f4ba3a6b3eb54701c
+- Message: feat: add pranzo/cena cost categories
+- Report: docs/ops-log/2026-02-22_21-03.md
+- Modified files:
+  - STATE_NOW.md
+  - src/models/Costo.ts
+  - src/pages/CostiViaggio.tsx
+  - src/pages/CostoFormModal.tsx
+  - src/services/storage.ts
+## 2026-02-22 21:26:10
+- Commit: 1d774d96aa23693abf76bf35be7df7a58a01581d
+- Message: ui: move partecipanti management into trip actions menu
+- Report: docs/ops-log/2026-02-22_21-26.md
+- Modified files:
+  - STATE_NOW.md
+  - src/pages/DettaglioViaggio.tsx
+## 2026-02-22 21:48:59
+- Commit: eda401ee88128829375ce7ac1ec5cf7122451897
+- Message: feat: add local backup/restore json
+- Report: docs/ops-log/2026-02-22_21-48.md
+- Modified files:
+  - STATE_NOW.md
+  - src/pages/Home.tsx
+  - src/services/storage.ts
