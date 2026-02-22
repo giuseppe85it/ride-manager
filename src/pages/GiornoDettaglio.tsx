@@ -1049,6 +1049,7 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
     ) ?? null;
   const canUseHotelForDestination = Boolean(hotelDestinationCandidate);
   const dayPlan = giorno?.dayPlan;
+  const hasTimelineSegments = Boolean(dayPlan && dayPlan.segments.length > 0);
   const ferryPrenotazioniById = useMemo(
     () =>
       new Map(
@@ -1075,7 +1076,7 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
           <h1 className="pageTitle">Giorno dettaglio</h1>
         </div>
 
-        <div className="card detailCard" style={{ marginBottom: "1rem" }}>
+        {!hasTimelineSegments && <div className="card detailCard" style={{ marginBottom: "1rem" }}>
           <div
             style={{
               display: "flex",
@@ -1476,7 +1477,7 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
               <p className="metaText">Nessuna tratta moto calcolata nel planner.</p>
             )}
           </div>
-        </div>
+        </div>}
 
         <div className="card detailCard" style={{ marginBottom: "1rem" }}>
           <h2 style={{ margin: "0 0 0.6rem 0" }}>Pianificazione</h2>
