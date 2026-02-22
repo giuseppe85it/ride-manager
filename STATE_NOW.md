@@ -161,6 +161,7 @@ Relazioni:
 - Prenotazioni HOTEL/TRAGHETTO con filtri, ricerca e CRUD.
 - Costi: categorie `PRANZO` e `CENA` supportate (modello, validazione storage, modale inserimento, filtri/breakdown).
 - Partecipanti per viaggio: gestione spostata nel menu azioni (`⋯`) del DettaglioViaggio con modale dedicato (non piu' sempre visibile in pagina).
+- Backup/Restore locale JSON completo: export/import di tutti gli store IndexedDB (`viaggi`, `giorni`, `gpxFiles`, `trackPoints`, `prenotazioni`, `costi`, `impostazioni`) con metadata e restore in sovrascrittura.
 ### PARZIALE
 - Home: voci placeholder (Backup / Export).
 - Dettaglio Viaggio: tab placeholder (Costi, Media).
@@ -168,7 +169,6 @@ Relazioni:
 ### TODO
 1. Implementare tab Costi con registrazione spese e aggregazioni per viaggio/giorno.
 2. Implementare tab Media per allegati del viaggio.
-3. Implementare Backup/Restore JSON locale.
 5. Introdurre indici/query mirate in storage per dataset grandi.
 
 ## File chiave (path)

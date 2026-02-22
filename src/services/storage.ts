@@ -35,6 +35,36 @@ type StoreName =
   | typeof STORE_COSTI
   | typeof STORE_IMPOSTAZIONI;
 
+const BACKUP_STORES: StoreName[] = [
+  STORE_VIAGGI,
+  STORE_GIORNI,
+  STORE_GPX_FILES,
+  STORE_TRACK_POINTS,
+  STORE_PRENOTAZIONI,
+  STORE_COSTI,
+  STORE_IMPOSTAZIONI,
+];
+
+export interface BackupMeta {
+  schemaVersion: number;
+  createdAt: string;
+  dbName: string;
+  dbVersion: number;
+}
+
+export interface BackupPayload {
+  meta: BackupMeta;
+  data: {
+    viaggi: unknown[];
+    giorni: unknown[];
+    gpxFiles: unknown[];
+    trackPoints: unknown[];
+    prenotazioni: unknown[];
+    costi: unknown[];
+    impostazioni: unknown[];
+  };
+}
+
 type LegacyViaggioRecord = Partial<Viaggio> & { id: string; titolo?: string };
 type LegacyGiornoRecord = Partial<Giorno> & { id: string; viaggioId?: string };
 type LegacyPrenotazioneRecord = Partial<Prenotazione> & {
@@ -124,6 +154,14 @@ function toOptionalNumber(value: unknown): number | undefined {
 
 function toOptionalBoolean(value: unknown): boolean | undefined {
   return typeof value === "boolean" ? value : undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isUnknownArray(value: unknown): value is unknown[] {
+  return Array.isArray(value);
 }
 
 function normalizeTripParticipants(value: unknown): string[] | undefined {
@@ -872,6 +910,131 @@ export async function saveImpostazioniApp(data: ImpostazioniApp): Promise<void> 
     throw new Error("Impostazioni non valide");
   }
   await putRecord(STORE_IMPOSTAZIONI, normalized);
+}
+
+export async function exportBackupJSON(): Promise<BackupPayload> {
+  const db = await initDB();
+  const transaction = db.transaction(BACKUP_STORES, "readonly");
+
+  const [
+    viaggi,
+    giorni,
+    gpxFiles,
+    trackPoints,
+    prenotazioni,
+    costi,
+    impostazioni,
+  ] = await Promise.all([
+    requestToPromise(transaction.objectStore(STORE_VIAGGI).getAll()),
+    requestToPromise(transaction.objectStore(STORE_GIORNI).getAll()),
+    requestToPromise(transaction.objectStore(STORE_GPX_FILES).getAll()),
+    requestToPromise(transaction.objectStore(STORE_TRACK_POINTS).getAll()),
+    requestToPromise(transaction.objectStore(STORE_PRENOTAZIONI).getAll()),
+    requestToPromise(transaction.objectStore(STORE_COSTI).getAll()),
+    requestToPromise(transaction.objectStore(STORE_IMPOSTAZIONI).getAll()),
+  ]);
+
+  await transactionToPromise(transaction);
+
+  return {
+    meta: {
+      schemaVersion: 1,
+      createdAt: new Date().toISOString(),
+      dbName: DB_NAME,
+      dbVersion: DB_VERSION,
+    },
+    data: {
+      viaggi: viaggi as unknown[],
+      giorni: giorni as unknown[],
+      gpxFiles: gpxFiles as unknown[],
+      trackPoints: trackPoints as unknown[],
+      prenotazioni: prenotazioni as unknown[],
+      costi: costi as unknown[],
+      impostazioni: impostazioni as unknown[],
+    },
+  };
+}
+
+function validateBackupPayload(payload: unknown): BackupPayload {
+  if (!isRecord(payload)) {
+    throw new Error("Backup non valido: payload non oggetto");
+  }
+
+  if (!isRecord(payload.meta)) {
+    throw new Error("Backup non valido: metadata mancanti");
+  }
+
+  if (!isRecord(payload.data)) {
+    throw new Error("Backup non valido: data mancante");
+  }
+
+  const meta = payload.meta;
+  const data = payload.data;
+
+  if (typeof meta.schemaVersion !== "number" || !Number.isFinite(meta.schemaVersion)) {
+    throw new Error("Backup non valido: schemaVersion non valido");
+  }
+  if (typeof meta.createdAt !== "string" || !meta.createdAt.trim()) {
+    throw new Error("Backup non valido: createdAt non valido");
+  }
+  if (typeof meta.dbName !== "string" || !meta.dbName.trim()) {
+    throw new Error("Backup non valido: dbName non valido");
+  }
+  if (typeof meta.dbVersion !== "number" || !Number.isFinite(meta.dbVersion)) {
+    throw new Error("Backup non valido: dbVersion non valido");
+  }
+
+  const requiredStores: Array<keyof BackupPayload["data"]> = [
+    "viaggi",
+    "giorni",
+    "gpxFiles",
+    "trackPoints",
+    "prenotazioni",
+    "costi",
+    "impostazioni",
+  ];
+
+  for (const storeKey of requiredStores) {
+    if (!isUnknownArray(data[storeKey])) {
+      throw new Error(`Backup non valido: store ${storeKey} mancante o non array`);
+    }
+  }
+
+  return payload as BackupPayload;
+}
+
+export async function restoreFromBackupJSON(payload: BackupPayload): Promise<void> {
+  const validated = validateBackupPayload(payload);
+  const db = await initDB();
+  const transaction = db.transaction(BACKUP_STORES, "readwrite");
+
+  for (const storeName of BACKUP_STORES) {
+    transaction.objectStore(storeName).clear();
+  }
+
+  for (const record of validated.data.viaggi) {
+    transaction.objectStore(STORE_VIAGGI).put(record);
+  }
+  for (const record of validated.data.giorni) {
+    transaction.objectStore(STORE_GIORNI).put(record);
+  }
+  for (const record of validated.data.gpxFiles) {
+    transaction.objectStore(STORE_GPX_FILES).put(record);
+  }
+  for (const record of validated.data.trackPoints) {
+    transaction.objectStore(STORE_TRACK_POINTS).put(record);
+  }
+  for (const record of validated.data.prenotazioni) {
+    transaction.objectStore(STORE_PRENOTAZIONI).put(record);
+  }
+  for (const record of validated.data.costi) {
+    transaction.objectStore(STORE_COSTI).put(record);
+  }
+  for (const record of validated.data.impostazioni) {
+    transaction.objectStore(STORE_IMPOSTAZIONI).put(record);
+  }
+
+  await transactionToPromise(transaction);
 }
 
 export async function deleteViaggioCascade(viaggioId: string): Promise<void> {
