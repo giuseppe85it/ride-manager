@@ -160,6 +160,7 @@ Relazioni:
 - Home: Import GPX rapido BMW one-click con auto-assign a Viaggio/Giorno per data (crea Viaggio/Giorno se mancanti).
 - Tab Giorni: card con azioni top-right (menu "..." + elimina) allineate e cliccabili senza sovrapporsi alla pill stato.
 - UI lista Giorni: card migliorate con "Giorno N", data IT in evidenza e azioni allineate.
+- Tab Costi: card "Saldo (50/50)" sui soli confermati (pagati) con warning per voci pagate non assegnate (PAYER?/split non valido).
 ### PARZIALE
 - Home: voci placeholder parziali (Backup / Export).
 - Dettaglio Viaggio: tab placeholder (Costi, Media).

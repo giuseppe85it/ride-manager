@@ -51,6 +51,15 @@ interface BookingQuoteResult {
   invalidSplit: boolean;
 }
 
+interface Balance50Contribution {
+  included: boolean;
+  pagatoIo: number;
+  pagatoLei: number;
+  nonAssegnato: number;
+  missingPayer: boolean;
+  invalidSplit: boolean;
+}
+
 const CATEGORY_ORDER: CostoCategoria[] = ["BENZINA", "PEDAGGI", "HOTEL", "TRAGHETTI", "EXTRA"];
 
 function formatDate(value: string): string {
@@ -93,6 +102,63 @@ function getManualQuote(costo: Costo): { quotaIo: number; quotaLei: number } {
   return {
     quotaIo: typeof costo.quotaIo === "number" ? costo.quotaIo : 0,
     quotaLei: typeof costo.quotaLei === "number" ? costo.quotaLei : 0,
+  };
+}
+
+function getManualBalanceContribution(costo: Costo): Balance50Contribution {
+  if (costo.pagatoDa === "IO") {
+    return {
+      included: true,
+      pagatoIo: costo.importo,
+      pagatoLei: 0,
+      nonAssegnato: 0,
+      missingPayer: false,
+      invalidSplit: false,
+    };
+  }
+
+  if (costo.pagatoDa === "LEI") {
+    return {
+      included: true,
+      pagatoIo: 0,
+      pagatoLei: costo.importo,
+      nonAssegnato: 0,
+      missingPayer: false,
+      invalidSplit: false,
+    };
+  }
+
+  const quotaIo = typeof costo.quotaIo === "number" ? costo.quotaIo : undefined;
+  const quotaLei = typeof costo.quotaLei === "number" ? costo.quotaLei : undefined;
+  if (quotaIo === undefined || quotaLei === undefined) {
+    return {
+      included: false,
+      pagatoIo: 0,
+      pagatoLei: 0,
+      nonAssegnato: costo.importo,
+      missingPayer: false,
+      invalidSplit: true,
+    };
+  }
+
+  if (Math.abs(quotaIo + quotaLei - costo.importo) > 0.01) {
+    return {
+      included: false,
+      pagatoIo: 0,
+      pagatoLei: 0,
+      nonAssegnato: costo.importo,
+      missingPayer: false,
+      invalidSplit: true,
+    };
+  }
+
+  return {
+    included: true,
+    pagatoIo: quotaIo,
+    pagatoLei: quotaLei,
+    nonAssegnato: 0,
+    missingPayer: false,
+    invalidSplit: false,
   };
 }
 
@@ -208,6 +274,29 @@ function getBookingQuoteResult(booking: BookingCost): BookingQuoteResult {
     quotaLei: 0,
     missingPayer: true,
     invalidSplit: false,
+  };
+}
+
+function getBookingBalanceContribution(booking: BookingCost): Balance50Contribution {
+  const quoteResult = getBookingQuoteResult(booking);
+  if (quoteResult.included) {
+    return {
+      included: true,
+      pagatoIo: quoteResult.quotaIo,
+      pagatoLei: quoteResult.quotaLei,
+      nonAssegnato: 0,
+      missingPayer: false,
+      invalidSplit: false,
+    };
+  }
+
+  return {
+    included: false,
+    pagatoIo: 0,
+    pagatoLei: 0,
+    nonAssegnato: booking.importo,
+    missingPayer: quoteResult.missingPayer,
+    invalidSplit: quoteResult.invalidSplit,
   };
 }
 
@@ -405,12 +494,25 @@ export default function CostiViaggio({ viaggioId }: CostiViaggioProps) {
     let quotaLeiTotale = 0;
     let bookingPaidMissingPayer = 0;
     let bookingPaidInvalidSplit = 0;
+    let saldo50PagatoIo = 0;
+    let saldo50PagatoLei = 0;
+    let saldo50NonAssegnati = 0;
+    let saldo50NonAssegnatiCount = 0;
 
     for (const category of visibleCategories) {
       for (const manualItem of manualByCategory[category]) {
         const quote = getManualQuote(manualItem);
         quotaIoTotale += quote.quotaIo;
         quotaLeiTotale += quote.quotaLei;
+
+        const manualBalance = getManualBalanceContribution(manualItem);
+        if (manualBalance.included) {
+          saldo50PagatoIo += manualBalance.pagatoIo;
+          saldo50PagatoLei += manualBalance.pagatoLei;
+        } else {
+          saldo50NonAssegnati += manualBalance.nonAssegnato;
+          saldo50NonAssegnatiCount += 1;
+        }
       }
 
       for (const bookingItem of bookingPaidByCategory[category]) {
@@ -427,8 +529,22 @@ export default function CostiViaggio({ viaggioId }: CostiViaggioProps) {
         if (quoteResult.invalidSplit) {
           bookingPaidInvalidSplit += 1;
         }
+
+        const bookingBalance = getBookingBalanceContribution(bookingItem);
+        if (bookingBalance.included) {
+          saldo50PagatoIo += bookingBalance.pagatoIo;
+          saldo50PagatoLei += bookingBalance.pagatoLei;
+        } else {
+          saldo50NonAssegnati += bookingBalance.nonAssegnato;
+          saldo50NonAssegnatiCount += 1;
+        }
       }
     }
+
+    const saldo50TotalePagato = saldo50PagatoIo + saldo50PagatoLei;
+    const saldo50QuotaPerTesta = saldo50TotalePagato / 2;
+    const rawSaldo50 = saldo50PagatoIo - saldo50QuotaPerTesta;
+    const saldo50Valore = Math.abs(rawSaldo50) <= 0.01 ? 0 : rawSaldo50;
 
     return {
       visibleCategories,
@@ -443,6 +559,13 @@ export default function CostiViaggio({ viaggioId }: CostiViaggioProps) {
       quotaLeiTotale,
       bookingPaidMissingPayer,
       bookingPaidInvalidSplit,
+      saldo50PagatoIo,
+      saldo50PagatoLei,
+      saldo50TotalePagato,
+      saldo50QuotaPerTesta,
+      saldo50Valore,
+      saldo50NonAssegnati,
+      saldo50NonAssegnatiCount,
     };
   }, [bookingCosts, categoriaFiltro, costi]);
 
@@ -568,7 +691,48 @@ export default function CostiViaggio({ viaggioId }: CostiViaggioProps) {
           </p>
           <strong>{formatEuro(analytics.totaleComplessivo)}</strong>
         </div>
+        <div className="card" style={{ padding: "0.9rem" }}>
+          <p className="metaText" style={{ margin: "0 0 0.35rem 0" }}>
+            Saldo (50/50)
+          </p>
+          <p className="metaText" style={{ margin: "0.15rem 0" }}>
+            Pagato {payerLabels.labelIO}: {formatEuro(analytics.saldo50PagatoIo)}
+          </p>
+          <p className="metaText" style={{ margin: "0.15rem 0" }}>
+            Pagato {payerLabels.labelLEI}: {formatEuro(analytics.saldo50PagatoLei)}
+          </p>
+          <p className="metaText" style={{ margin: "0.15rem 0" }}>
+            Totale pagato: {formatEuro(analytics.saldo50TotalePagato)}
+          </p>
+          <p className="metaText" style={{ margin: "0.15rem 0 0.4rem 0" }}>
+            Totale/2: {formatEuro(analytics.saldo50QuotaPerTesta)}
+          </p>
+          <strong
+            style={{
+              color:
+                analytics.saldo50Valore > 0
+                  ? "#34d399"
+                  : analytics.saldo50Valore < 0
+                    ? "#60a5fa"
+                    : "#e5e7eb",
+            }}
+          >
+            {analytics.saldo50Valore > 0
+              ? `${payerLabels.labelLEI} deve a ${payerLabels.labelIO}: ${formatEuro(analytics.saldo50Valore)}`
+              : analytics.saldo50Valore < 0
+                ? `${payerLabels.labelIO} deve a ${payerLabels.labelLEI}: ${formatEuro(Math.abs(analytics.saldo50Valore))}`
+                : "PARI"}
+          </strong>
+        </div>
       </div>
+      {analytics.saldo50NonAssegnati > 0 && (
+        <div className="card" style={{ padding: "0.75rem", marginBottom: "0.8rem", borderColor: "#E11D48" }}>
+          <p className="metaText" style={{ margin: 0, color: "#fb7185" }}>
+            Attenzione: {formatEuro(analytics.saldo50NonAssegnati)} pagati non assegnati (
+            {analytics.saldo50NonAssegnatiCount} voci: PAYER? / split non valido). Il saldo esclude queste voci.
+          </p>
+        </div>
+      )}
 
       <div className="card" style={{ padding: "0.85rem", marginBottom: "0.8rem", overflowX: "auto" }}>
         <p className="metaText" style={{ margin: "0 0 0.5rem 0" }}>
