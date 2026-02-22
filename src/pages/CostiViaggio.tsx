@@ -652,11 +652,8 @@ export default function CostiViaggio({ viaggioId }: CostiViaggioProps) {
     let quotaLeiTotale = 0;
     let bookingPaidMissingPayer = 0;
     let bookingPaidInvalidSplit = 0;
-    let saldo50PagatoIo = 0;
-    let saldo50PagatoLei = 0;
     let saldo50NonAssegnati = 0;
     let saldo50NonAssegnatiCount = 0;
-    let saldo50InvalidAmountCount = 0;
 
     for (const category of visibleCategories) {
       for (const manualItem of manualByCategory[category]) {
@@ -668,16 +665,9 @@ export default function CostiViaggio({ viaggioId }: CostiViaggioProps) {
           labelA: payerLabels.labelIO,
           labelB: payerLabels.labelLEI,
         });
-        if (manualBalance.included) {
-          saldo50PagatoIo += manualBalance.pagatoIo;
-          saldo50PagatoLei += manualBalance.pagatoLei;
-        } else {
-          if (manualBalance.invalidAmount) {
-            saldo50InvalidAmountCount += 1;
-          } else {
-            saldo50NonAssegnati += manualBalance.nonAssegnato;
-            saldo50NonAssegnatiCount += 1;
-          }
+        if (!manualBalance.included && !manualBalance.invalidAmount) {
+          saldo50NonAssegnati += manualBalance.nonAssegnato;
+          saldo50NonAssegnatiCount += 1;
         }
       }
 
@@ -700,27 +690,19 @@ export default function CostiViaggio({ viaggioId }: CostiViaggioProps) {
           labelA: payerLabels.labelIO,
           labelB: payerLabels.labelLEI,
         });
-        if (bookingBalance.included) {
-          saldo50PagatoIo += bookingBalance.pagatoIo;
-          saldo50PagatoLei += bookingBalance.pagatoLei;
-        } else {
-          if (bookingBalance.invalidAmount) {
-            saldo50InvalidAmountCount += 1;
-          } else {
-            saldo50NonAssegnati += bookingBalance.nonAssegnato;
-            saldo50NonAssegnatiCount += 1;
-          }
+        if (!bookingBalance.included && !bookingBalance.invalidAmount) {
+          saldo50NonAssegnati += bookingBalance.nonAssegnato;
+          saldo50NonAssegnatiCount += 1;
         }
       }
     }
 
+    const saldo50PagatoIo = quotaIoTotale;
+    const saldo50PagatoLei = quotaLeiTotale;
     const saldo50TotalePagato = saldo50PagatoIo + saldo50PagatoLei;
     const saldo50QuotaPerTesta = saldo50TotalePagato / 2;
     const rawSaldo50 = saldo50PagatoIo - saldo50QuotaPerTesta;
     const saldo50Valore = Math.abs(rawSaldo50) <= 0.01 ? 0 : rawSaldo50;
-    const saldo50AssignedPaidTotal = saldo50PagatoIo + saldo50PagatoLei + saldo50NonAssegnati;
-    const saldo50MismatchConfirmed =
-      Math.abs(saldo50AssignedPaidTotal - totaleConfermato) > 0.01;
 
     return {
       visibleCategories,
@@ -742,9 +724,6 @@ export default function CostiViaggio({ viaggioId }: CostiViaggioProps) {
       saldo50Valore,
       saldo50NonAssegnati,
       saldo50NonAssegnatiCount,
-      saldo50InvalidAmountCount,
-      saldo50AssignedPaidTotal,
-      saldo50MismatchConfirmed,
     };
   }, [bookingCosts, categoriaFiltro, costi, payerLabels]);
 
@@ -912,22 +891,6 @@ export default function CostiViaggio({ viaggioId }: CostiViaggioProps) {
           </p>
         </div>
       )}
-      {(analytics.saldo50InvalidAmountCount > 0 || analytics.saldo50MismatchConfirmed) && (
-        <div className="card" style={{ padding: "0.75rem", marginBottom: "0.8rem", borderColor: "#E11D48" }}>
-          {analytics.saldo50InvalidAmountCount > 0 && (
-            <p className="metaText" style={{ margin: "0 0 0.25rem 0", color: "#fb7185" }}>
-              Attenzione: {analytics.saldo50InvalidAmountCount} voci confermate hanno importo non valido nel saldo.
-            </p>
-          )}
-          {analytics.saldo50MismatchConfirmed && (
-            <p className="metaText" style={{ margin: 0, color: "#fb7185" }}>
-              Mismatch: il saldo sta conteggiando {formatEuro(analytics.saldo50AssignedPaidTotal)} ma il Totale
-              CONFERMATO e {formatEuro(analytics.totaleConfermato)}. Controlla payer/importi.
-            </p>
-          )}
-        </div>
-      )}
-
       <div className="card" style={{ padding: "0.85rem", marginBottom: "0.8rem", overflowX: "auto" }}>
         <p className="metaText" style={{ margin: "0 0 0.5rem 0" }}>
           Breakdown per categoria

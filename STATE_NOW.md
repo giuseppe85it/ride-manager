@@ -162,7 +162,7 @@ Relazioni:
 - UI lista Giorni: card migliorate con "Giorno N", data IT in evidenza e azioni allineate.
 - Tab Costi: card "Saldo (50/50)" sui soli confermati (pagati) con warning per voci pagate non assegnate (PAYER?/split non valido).
 - Saldo 50/50 Costi: compatibile con payer salvato come nome partecipante reale oppure legacy IO/LEI.
-- Saldo 50/50 Costi: conteggia le prenotazioni pagate sul loro costoTotale (amount) e segnala mismatch rispetto al Totale CONFERMATO.
+- Saldo 50/50 Costi: calcolato direttamente dalle quote confermate dei 2 partecipanti (manuali + prenotazioni pagate), con fallback retrocompatibile IO/LEI.
 ### PARZIALE
 - Home: voci placeholder parziali (Backup / Export).
 - Dettaglio Viaggio: tab placeholder (Costi, Media).
