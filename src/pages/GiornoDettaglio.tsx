@@ -263,6 +263,7 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
   const [originSuggestions, setOriginSuggestions] = useState<GeocodeSuggestion[]>([]);
   const [destinationSuggestions, setDestinationSuggestions] = useState<GeocodeSuggestion[]>([]);
   const [plannerSearch, setPlannerSearch] = useState<PlannerSearchState | null>(null);
+  const [rideSegmentUiError, setRideSegmentUiError] = useState<{ segmentId: string; message: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -647,6 +648,7 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
     field: keyof Pick<RideSegment, "originText" | "destinationText">,
     value: string,
   ): Promise<void> {
+    setRideSegmentUiError((current) => (current?.segmentId === segmentId ? null : current));
     await updateDayPlan((currentDayPlan) => ({
       ...currentDayPlan,
       segments: currentDayPlan.segments.map((segment) =>
@@ -757,15 +759,23 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
   }
 
   async function handleUseHotelDestinationForSegment(segmentId: string): Promise<void> {
-    const candidate = [hotelPrenotazione?.indirizzo, hotelPrenotazione?.localita, hotelPrenotazione?.titolo].find(
-      (value): value is string => typeof value === "string" && value.trim().length > 0,
-    );
+    const indirizzo = typeof hotelPrenotazione?.indirizzo === "string" ? hotelPrenotazione.indirizzo.trim() : "";
+    const localita = typeof hotelPrenotazione?.localita === "string" ? hotelPrenotazione.localita.trim() : "";
+    const titolo = typeof hotelPrenotazione?.titolo === "string" ? hotelPrenotazione.titolo.trim() : "";
+    const combinedHotel = [titolo, localita].filter((part) => part.length > 0).join(" ");
+    const addressLike = [indirizzo, localita].filter((part) => part.length > 0).join(" ");
+    const candidate = addressLike || (localita ? combinedHotel : "");
 
     if (!candidate) {
+      const message = "Hotel del giorno non ha indirizzo/localita: completa la prenotazione hotel";
+      setRideSegmentUiError({ segmentId, message });
+      setError(message);
       return;
     }
 
     await handleRideSegmentFieldChange(segmentId, "destinationText", candidate.trim());
+    setRideSegmentUiError((current) => (current?.segmentId === segmentId ? null : current));
+    setError(null);
     setPlannerSearch(null);
   }
 
@@ -781,16 +791,24 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
     );
 
     if (!segment) {
-      setError("Segmento moto non trovato.");
+      const message = "Segmento moto non trovato.";
+      setRideSegmentUiError({ segmentId, message });
+      setError(message);
       return;
     }
 
-    if (!segment.originText.trim() || !segment.destinationText.trim()) {
-      setError("Compila partenza e arrivo della tratta moto.");
+    const originTextTrimmed = segment.originText.trim();
+    const destinationTextTrimmed = segment.destinationText.trim();
+    if (!originTextTrimmed || !destinationTextTrimmed) {
+      const message =
+        "Inserisci Partenza e Arrivo (seleziona un suggerimento o usa Hotel del giorno)";
+      setRideSegmentUiError({ segmentId, message });
+      setError(message);
       return;
     }
 
     setIsGeneratingRoute(true);
+    setRideSegmentUiError((current) => (current?.segmentId === segmentId ? null : current));
     setError(null);
 
     try {
@@ -800,18 +818,28 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          originText: segment.originText.trim(),
-          destinationText: segment.destinationText.trim(),
+          originText: originTextTrimmed,
+          destinationText: destinationTextTrimmed,
           mode: segment.modeRequested,
         }),
       });
 
-      const payload = (await response.json()) as RouteApiSuccessResponse | RouteApiErrorResponse;
+      const payload = (await response.json().catch(() => null)) as
+        | RouteApiSuccessResponse
+        | RouteApiErrorResponse
+        | null;
       if (!response.ok || !isRouteApiSuccessResponse(payload)) {
         const message =
-          typeof (payload as RouteApiErrorResponse).error === "string"
+          typeof (payload as RouteApiErrorResponse | null)?.error === "string"
             ? (payload as RouteApiErrorResponse).error
-            : "Errore calcolo tratta";
+            : "Errore calcolo tratta (verifica Partenza/Arrivo)";
+        console.error("handleCalculateRideSegment /api/route failed", {
+          status: response.status,
+          segmentId,
+          originText: originTextTrimmed,
+          destinationText: destinationTextTrimmed,
+          payload,
+        });
         throw new Error(message);
       }
 
@@ -836,8 +864,13 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
 
       await saveDayPlan(nextDayPlan);
       setPlannerSearch(null);
+      setRideSegmentUiError((current) => (current?.segmentId === segmentId ? null : current));
     } catch (routeError) {
-      const message = routeError instanceof Error ? routeError.message : "Errore calcolo tratta";
+      const message =
+        routeError instanceof Error
+          ? routeError.message
+          : "Errore calcolo tratta (verifica Partenza/Arrivo)";
+      setRideSegmentUiError({ segmentId, message });
       setError(message);
     } finally {
       setIsGeneratingRoute(false);
@@ -1238,6 +1271,11 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
                         <p className="metaText" style={{ margin: 0 }}>
                           Mode applicato: {segment.modeApplied ?? "\u2014"}
                         </p>
+                        {rideSegmentUiError?.segmentId === segment.id && (
+                          <p className="errorText" style={{ margin: "0.25rem 0 0 0" }}>
+                            {rideSegmentUiError.message}
+                          </p>
+                        )}
                       </div>
                     </div>
                   );
