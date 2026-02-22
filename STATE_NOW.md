@@ -161,6 +161,7 @@ Relazioni:
 - Tab Giorni: card con azioni top-right (menu "..." + elimina) allineate e cliccabili senza sovrapporsi alla pill stato.
 - UI lista Giorni: card migliorate con "Giorno N", data IT in evidenza e azioni allineate.
 - Tab Costi: card "Saldo (50/50)" sui soli confermati (pagati) con warning per voci pagate non assegnate (PAYER?/split non valido).
+- Saldo 50/50 Costi: compatibile con payer salvato come nome partecipante reale oppure legacy IO/LEI.
 ### PARZIALE
 - Home: voci placeholder parziali (Backup / Export).
 - Dettaglio Viaggio: tab placeholder (Costi, Media).

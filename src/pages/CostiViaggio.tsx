@@ -33,6 +33,7 @@ interface BookingCost {
   valuta: "EUR";
   pagato: boolean;
   pagatoDa?: BookingPagatoDa;
+  pagatoDaRaw?: string;
   quotaIo?: number;
   quotaLei?: number;
 }
@@ -58,6 +59,11 @@ interface Balance50Contribution {
   nonAssegnato: number;
   missingPayer: boolean;
   invalidSplit: boolean;
+}
+
+interface BalancePayerLabels {
+  labelA: string;
+  labelB: string;
 }
 
 const CATEGORY_ORDER: CostoCategoria[] = ["BENZINA", "PEDAGGI", "HOTEL", "TRAGHETTI", "EXTRA"];
@@ -300,6 +306,115 @@ function getBookingBalanceContribution(booking: BookingCost): Balance50Contribut
   };
 }
 
+function matchParticipantPayerRole(
+  payerValue: unknown,
+  labels: BalancePayerLabels,
+): "A" | "B" | "DIVISO" | "UNKNOWN" {
+  if (typeof payerValue !== "string" || !payerValue.trim()) {
+    return "UNKNOWN";
+  }
+
+  const normalized = payerValue.trim().toLocaleLowerCase();
+  const labelANormalized = labels.labelA.trim().toLocaleLowerCase();
+  const labelBNormalized = labels.labelB.trim().toLocaleLowerCase();
+
+  if (normalized === "diviso") {
+    return "DIVISO";
+  }
+  if (normalized === "io" || (labelANormalized && normalized === labelANormalized)) {
+    return "A";
+  }
+  if (normalized === "lei" || (labelBNormalized && normalized === labelBNormalized)) {
+    return "B";
+  }
+
+  return "UNKNOWN";
+}
+
+function getManualBalanceContributionWithLabels(
+  costo: Costo,
+  labels: BalancePayerLabels,
+): Balance50Contribution {
+  const payerRole = matchParticipantPayerRole((costo as { pagatoDa?: unknown }).pagatoDa, labels);
+
+  if (payerRole === "A") {
+    return {
+      included: true,
+      pagatoIo: costo.importo,
+      pagatoLei: 0,
+      nonAssegnato: 0,
+      missingPayer: false,
+      invalidSplit: false,
+    };
+  }
+
+  if (payerRole === "B") {
+    return {
+      included: true,
+      pagatoIo: 0,
+      pagatoLei: costo.importo,
+      nonAssegnato: 0,
+      missingPayer: false,
+      invalidSplit: false,
+    };
+  }
+
+  if (payerRole !== "DIVISO") {
+    return {
+      included: false,
+      pagatoIo: 0,
+      pagatoLei: 0,
+      nonAssegnato: costo.importo,
+      missingPayer: true,
+      invalidSplit: false,
+    };
+  }
+
+  return getManualBalanceContribution(costo);
+}
+
+function getBookingBalanceContributionWithLabels(
+  booking: BookingCost,
+  labels: BalancePayerLabels,
+): Balance50Contribution {
+  const payerRole = matchParticipantPayerRole(booking.pagatoDaRaw ?? booking.pagatoDa, labels);
+
+  if (payerRole === "A") {
+    return {
+      included: true,
+      pagatoIo: booking.importo,
+      pagatoLei: 0,
+      nonAssegnato: 0,
+      missingPayer: false,
+      invalidSplit: false,
+    };
+  }
+
+  if (payerRole === "B") {
+    return {
+      included: true,
+      pagatoIo: 0,
+      pagatoLei: booking.importo,
+      nonAssegnato: 0,
+      missingPayer: false,
+      invalidSplit: false,
+    };
+  }
+
+  if (payerRole !== "DIVISO") {
+    return {
+      included: false,
+      pagatoIo: 0,
+      pagatoLei: 0,
+      nonAssegnato: booking.importo,
+      missingPayer: true,
+      invalidSplit: false,
+    };
+  }
+
+  return getBookingBalanceContribution(booking);
+}
+
 function buildEmptyTotals(): Record<CostoCategoria, CategoryTotals> {
   return {
     BENZINA: { confirmed: 0, unpaid: 0, total: 0 },
@@ -418,6 +533,7 @@ export default function CostiViaggio({ viaggioId }: CostiViaggioProps) {
           valuta: prenotazione.valuta,
           pagato: prenotazione.pagato === true,
           pagatoDa: getBookingPayer(prenotazione.pagatoDa),
+          pagatoDaRaw: typeof prenotazione.pagatoDa === "string" ? prenotazione.pagatoDa : undefined,
           quotaIo: typeof prenotazione.quotaIo === "number" ? prenotazione.quotaIo : undefined,
           quotaLei: typeof prenotazione.quotaLei === "number" ? prenotazione.quotaLei : undefined,
         },
@@ -505,7 +621,10 @@ export default function CostiViaggio({ viaggioId }: CostiViaggioProps) {
         quotaIoTotale += quote.quotaIo;
         quotaLeiTotale += quote.quotaLei;
 
-        const manualBalance = getManualBalanceContribution(manualItem);
+        const manualBalance = getManualBalanceContributionWithLabels(manualItem, {
+          labelA: payerLabels.labelIO,
+          labelB: payerLabels.labelLEI,
+        });
         if (manualBalance.included) {
           saldo50PagatoIo += manualBalance.pagatoIo;
           saldo50PagatoLei += manualBalance.pagatoLei;
@@ -530,7 +649,10 @@ export default function CostiViaggio({ viaggioId }: CostiViaggioProps) {
           bookingPaidInvalidSplit += 1;
         }
 
-        const bookingBalance = getBookingBalanceContribution(bookingItem);
+        const bookingBalance = getBookingBalanceContributionWithLabels(bookingItem, {
+          labelA: payerLabels.labelIO,
+          labelB: payerLabels.labelLEI,
+        });
         if (bookingBalance.included) {
           saldo50PagatoIo += bookingBalance.pagatoIo;
           saldo50PagatoLei += bookingBalance.pagatoLei;
@@ -567,7 +689,7 @@ export default function CostiViaggio({ viaggioId }: CostiViaggioProps) {
       saldo50NonAssegnati,
       saldo50NonAssegnatiCount,
     };
-  }, [bookingCosts, categoriaFiltro, costi]);
+  }, [bookingCosts, categoriaFiltro, costi, payerLabels]);
 
   async function handleDelete(costoId: string): Promise<void> {
     const confirmed = window.confirm("Eliminare questo costo?");
