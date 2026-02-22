@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Costo, CostoCategoria, CostoPagatoDa } from "../models/Costo";
 import type { Giorno } from "../models/Giorno";
-import type { ImpostazioniApp } from "../models/ImpostazioniApp";
-import { deleteCosto, getGiorniByViaggio, getImpostazioniApp, saveCosto } from "../services/storage";
+import { deleteCosto, getGiorniByViaggio, saveCosto } from "../services/storage";
 import "../styles/theme.css";
 
 interface CostoFormModalProps {
   isOpen: boolean;
   viaggioId: string;
+  partecipantiViaggio?: string[];
   initialCosto?: Costo | null;
   mode?: "full" | "quick";
   quickPresetCategoria?: "BENZINA" | "PEDAGGI";
@@ -24,11 +24,13 @@ interface CostoFormState {
   importo: string;
   litri: string;
   prezzoLitro: string;
-  pagatoDa: CostoPagatoDa;
+  pagatoDa: string;
   quotaIo: string;
   quotaLei: string;
   note: string;
 }
+
+const DEFAULT_UI_PARTECIPANTI = ["Peppe", "Elvira"];
 
 function toDateInput(value?: string): string {
   if (!value) return "";
@@ -93,9 +95,20 @@ function formatDayOption(giorno: Giorno): string {
   return `${giorno.data} - ${giorno.titolo.trim() ? giorno.titolo : "Senza titolo"}`;
 }
 
-function getPayerLabels(settings?: ImpostazioniApp): { labelIO: string; labelLEI: string } {
-  const first = settings?.partecipanti[0]?.nome?.trim();
-  const second = settings?.partecipanti[1]?.nome?.trim();
+function normalizeTripParticipantsForUi(partecipanti?: string[]): string[] {
+  const sanitized = (Array.isArray(partecipanti) ? partecipanti : [])
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0)
+    .slice(0, 6);
+
+  return sanitized.length > 0 ? sanitized : [...DEFAULT_UI_PARTECIPANTI];
+}
+
+function getPayerLabels(partecipanti?: string[]): { labelIO: string; labelLEI: string } {
+  const normalized = normalizeTripParticipantsForUi(partecipanti);
+  const first = normalized[0]?.trim();
+  const second = normalized[1]?.trim();
   return {
     labelIO: first ? first : "IO",
     labelLEI: second ? second : "LEI",
@@ -105,6 +118,7 @@ function getPayerLabels(settings?: ImpostazioniApp): { labelIO: string; labelLEI
 export default function CostoFormModal({
   isOpen,
   viaggioId,
+  partecipantiViaggio,
   initialCosto,
   mode = "full",
   quickPresetCategoria,
@@ -115,10 +129,18 @@ export default function CostoFormModal({
   const [form, setForm] = useState<CostoFormState>(buildInitialState(initialCosto));
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
-  const [payerLabels, setPayerLabels] = useState<{ labelIO: string; labelLEI: string }>({
-    labelIO: "IO",
-    labelLEI: "LEI",
-  });
+  const tripParticipantsUi = useMemo(
+    () => normalizeTripParticipantsForUi(partecipantiViaggio),
+    [partecipantiViaggio],
+  );
+  const payerLabels = useMemo(() => getPayerLabels(tripParticipantsUi), [tripParticipantsUi]);
+  const isSplitSupported = tripParticipantsUi.length === 2;
+  const currentPayerIsListed = useMemo(() => {
+    if (!form.pagatoDa || form.pagatoDa === "DIVISO") {
+      return true;
+    }
+    return tripParticipantsUi.some((name) => name === form.pagatoDa);
+  }, [form.pagatoDa, tripParticipantsUi]);
 
   const effectiveMode: "full" | "quick" = initialCosto ? "full" : mode;
   const quickCategoria: "BENZINA" | "PEDAGGI" = quickPresetCategoria ?? "BENZINA";
@@ -142,6 +164,9 @@ export default function CostoFormModal({
     if (!isOpen) return;
 
     const baseState = buildInitialState(initialCosto);
+    if (!initialCosto) {
+      baseState.pagatoDa = tripParticipantsUi[0] ?? "IO";
+    }
     if (!initialCosto && effectiveMode === "quick") {
       baseState.categoria = quickCategoria;
       baseState.titolo = quickCategoria === "BENZINA" ? "Benzina" : "Pedaggio";
@@ -150,7 +175,7 @@ export default function CostoFormModal({
 
     setForm(baseState);
     setError(null);
-  }, [isOpen, initialCosto, effectiveMode, quickCategoria]);
+  }, [isOpen, initialCosto, effectiveMode, quickCategoria, tripParticipantsUi]);
 
   useEffect(() => {
     if (!isOpen || effectiveMode !== "full") return;
@@ -176,30 +201,6 @@ export default function CostoFormModal({
       isActive = false;
     };
   }, [isOpen, viaggioId, effectiveMode]);
-
-  useEffect(() => {
-    if (!isOpen) return;
-
-    let isActive = true;
-
-    async function loadSettings(): Promise<void> {
-      try {
-        const settings = await getImpostazioniApp();
-        if (isActive) {
-          setPayerLabels(getPayerLabels(settings));
-        }
-      } catch {
-        if (isActive) {
-          setPayerLabels({ labelIO: "IO", labelLEI: "LEI" });
-        }
-      }
-    }
-
-    void loadSettings();
-    return () => {
-      isActive = false;
-    };
-  }, [isOpen]);
 
   const derivedPrezzoLitro = useMemo(() => {
     if (!isQuickBenzina) {
@@ -288,6 +289,11 @@ export default function CostoFormModal({
     const quotaLei = toOptionalNumber(form.quotaLei);
 
     if (form.pagatoDa === "DIVISO") {
+      if (!isSplitSupported) {
+        setError("Split avanzato non ancora supportato: usa un pagatore singolo.");
+        return;
+      }
+
       if (quotaIo === undefined || quotaLei === undefined) {
         setError(`Per DIVISO inserisci quota ${payerLabels.labelIO} e quota ${payerLabels.labelLEI}.`);
         return;
@@ -323,7 +329,7 @@ export default function CostoFormModal({
         importo: importoFinale,
         litri: categoriaFinale === "BENZINA" ? litriFinali : undefined,
         prezzoLitro: categoriaFinale === "BENZINA" ? prezzoLitroFinale : undefined,
-        pagatoDa: form.pagatoDa,
+        pagatoDa: form.pagatoDa as CostoPagatoDa,
         quotaIo: form.pagatoDa === "DIVISO" ? quotaIo : undefined,
         quotaLei: form.pagatoDa === "DIVISO" ? quotaLei : undefined,
         note: toOptionalString(form.note),
@@ -394,13 +400,21 @@ export default function CostoFormModal({
               onChange={(event) =>
                 setForm((current) => ({
                   ...current,
-                  pagatoDa: event.target.value as CostoPagatoDa,
+                  pagatoDa: event.target.value,
                 }))
               }
             >
-              <option value="IO">{payerLabels.labelIO}</option>
-              <option value="LEI">{payerLabels.labelLEI}</option>
-              <option value="DIVISO">DIVISO</option>
+              {tripParticipantsUi.map((name) => (
+                <option key={`full-payer-${name}`} value={name}>
+                  {name}
+                </option>
+              ))}
+              {!currentPayerIsListed && form.pagatoDa && form.pagatoDa !== "DIVISO" && (
+                <option value={form.pagatoDa}>{form.pagatoDa} (storico)</option>
+              )}
+              <option value="DIVISO" disabled={!isSplitSupported}>
+                DIVISO{!isSplitSupported ? " (solo 2 partecipanti)" : ""}
+              </option>
             </select>
 
             <input
@@ -496,6 +510,12 @@ export default function CostoFormModal({
               </>
             )}
 
+            {!isSplitSupported && (
+              <p className="metaText costiCol2" style={{ margin: "0.1rem 0", color: "#fbbf24" }}>
+                Split avanzato non ancora supportato: usa un pagatore singolo.
+              </p>
+            )}
+
             <textarea
               className="inputField costiCol2"
               rows={4}
@@ -544,13 +564,21 @@ export default function CostoFormModal({
               onChange={(event) =>
                 setForm((current) => ({
                   ...current,
-                  pagatoDa: event.target.value as CostoPagatoDa,
+                  pagatoDa: event.target.value,
                 }))
               }
             >
-              <option value="IO">{payerLabels.labelIO}</option>
-              <option value="LEI">{payerLabels.labelLEI}</option>
-              <option value="DIVISO">DIVISO</option>
+              {tripParticipantsUi.map((name) => (
+                <option key={`quick-payer-${name}`} value={name}>
+                  {name}
+                </option>
+              ))}
+              {!currentPayerIsListed && form.pagatoDa && form.pagatoDa !== "DIVISO" && (
+                <option value={form.pagatoDa}>{form.pagatoDa} (storico)</option>
+              )}
+              <option value="DIVISO" disabled={!isSplitSupported}>
+                DIVISO{!isSplitSupported ? " (solo 2 partecipanti)" : ""}
+              </option>
             </select>
 
             <input
@@ -581,6 +609,12 @@ export default function CostoFormModal({
                   onChange={(event) => setForm((current) => ({ ...current, quotaLei: event.target.value }))}
                 />
               </>
+            )}
+
+            {!isSplitSupported && (
+              <p className="metaText costiCol2" style={{ margin: "0.1rem 0", color: "#fbbf24" }}>
+                Split avanzato non ancora supportato: usa un pagatore singolo.
+              </p>
             )}
 
             <textarea

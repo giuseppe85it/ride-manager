@@ -1,11 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Costo, CostoCategoria } from "../models/Costo";
-import type { ImpostazioniApp } from "../models/ImpostazioniApp";
 import type { Prenotazione } from "../models/Prenotazione";
 import {
   deleteCosto,
   getCostiByViaggio,
-  getImpostazioniApp,
   getPrenotazioniByViaggio,
 } from "../services/storage";
 import CostoFormModal from "./CostoFormModal";
@@ -14,13 +12,14 @@ import "../styles/theme.css";
 
 interface CostiViaggioProps {
   viaggioId: string;
+  partecipantiViaggio?: string[];
 }
 
 type CategoriaFiltro = "ALL" | CostoCategoria;
 type CostoModalMode = "full" | "quick";
 type QuickPresetCategoria = "BENZINA" | "PEDAGGI";
 type BookingCostCategory = "HOTEL" | "TRAGHETTI";
-type BookingPagatoDa = "IO" | "LEI" | "DIVISO";
+type BookingPagatoDa = string;
 
 interface BookingCost {
   id: string;
@@ -69,6 +68,7 @@ interface BalancePayerLabels {
 }
 
 const CATEGORY_ORDER: CostoCategoria[] = ["BENZINA", "PEDAGGI", "HOTEL", "TRAGHETTI", "EXTRA"];
+const DEFAULT_UI_PARTECIPANTI = ["Peppe", "Elvira"];
 
 function formatDate(value: string): string {
   const parsed = new Date(value);
@@ -98,7 +98,30 @@ function categoriaLabel(categoria: CostoCategoria): string {
   return "Extra";
 }
 
-function getManualQuote(costo: Costo): { quotaIo: number; quotaLei: number } {
+function normalizeTripParticipantsForUi(partecipanti?: string[]): string[] {
+  const sanitized = (Array.isArray(partecipanti) ? partecipanti : [])
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0)
+    .slice(0, 6);
+
+  return sanitized.length > 0 ? sanitized : [...DEFAULT_UI_PARTECIPANTI];
+}
+
+function getManualQuote(
+  costo: Costo,
+  labels?: BalancePayerLabels,
+): { quotaIo: number; quotaLei: number } {
+  if (labels) {
+    const payerRole = matchParticipantPayerRole((costo as { pagatoDa?: unknown }).pagatoDa, labels);
+    if (payerRole === "A") {
+      return { quotaIo: costo.importo, quotaLei: 0 };
+    }
+    if (payerRole === "B") {
+      return { quotaIo: 0, quotaLei: costo.importo };
+    }
+  }
+
   if (costo.pagatoDa === "IO") {
     return { quotaIo: costo.importo, quotaLei: 0 };
   }
@@ -232,13 +255,39 @@ function getBookingCategoria(tipo: Prenotazione["tipo"]): BookingCostCategory | 
 }
 
 function getBookingPayer(value: unknown): BookingPagatoDa | undefined {
-  if (value === "IO" || value === "LEI" || value === "DIVISO") {
-    return value;
+  if (typeof value === "string" && value.trim()) {
+    return value.trim();
   }
   return undefined;
 }
 
-function getBookingQuoteResult(booking: BookingCost): BookingQuoteResult {
+function getBookingQuoteResult(
+  booking: BookingCost,
+  labels?: BalancePayerLabels,
+): BookingQuoteResult {
+  if (labels) {
+    const payerRole = matchParticipantPayerRole(booking.pagatoDaRaw ?? booking.pagatoDa, labels);
+    if (payerRole === "A") {
+      return {
+        included: true,
+        quotaIo: booking.importo,
+        quotaLei: 0,
+        missingPayer: false,
+        invalidSplit: false,
+      };
+    }
+
+    if (payerRole === "B") {
+      return {
+        included: true,
+        quotaIo: 0,
+        quotaLei: booking.importo,
+        missingPayer: false,
+        invalidSplit: false,
+      };
+    }
+  }
+
   if (booking.pagatoDa === "IO") {
     return {
       included: true,
@@ -487,12 +536,16 @@ function buildEmptyBookingListMap(): Record<CostoCategoria, BookingCost[]> {
 }
 
 function getPayerBadgeLabel(value?: BookingPagatoDa): string {
-  return value ?? "PAYER?";
+  if (!value || !value.trim()) {
+    return "PAYER?";
+  }
+  return value;
 }
 
-function getPayerLabels(settings?: ImpostazioniApp): { labelIO: string; labelLEI: string } {
-  const first = settings?.partecipanti[0]?.nome?.trim();
-  const second = settings?.partecipanti[1]?.nome?.trim();
+function getPayerLabels(partecipanti?: string[]): { labelIO: string; labelLEI: string } {
+  const normalized = normalizeTripParticipantsForUi(partecipanti);
+  const first = normalized[0]?.trim();
+  const second = normalized[1]?.trim();
   return {
     labelIO: first ? first : "IO",
     labelLEI: second ? second : "LEI",
@@ -509,7 +562,7 @@ function mapPayerDisplay(
   return getPayerBadgeLabel(payer);
 }
 
-export default function CostiViaggio({ viaggioId }: CostiViaggioProps) {
+export default function CostiViaggio({ viaggioId, partecipantiViaggio }: CostiViaggioProps) {
   const [costi, setCosti] = useState<Costo[]>([]);
   const [prenotazioni, setPrenotazioni] = useState<Prenotazione[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -519,28 +572,29 @@ export default function CostiViaggio({ viaggioId }: CostiViaggioProps) {
   const [modalMode, setModalMode] = useState<CostoModalMode>("full");
   const [quickPresetCategoria, setQuickPresetCategoria] = useState<QuickPresetCategoria>("BENZINA");
   const [editingCosto, setEditingCosto] = useState<Costo | null>(null);
-  const [payerLabels, setPayerLabels] = useState<{ labelIO: string; labelLEI: string }>({
-    labelIO: "IO",
-    labelLEI: "LEI",
-  });
+  const tripParticipantsUi = useMemo(
+    () => normalizeTripParticipantsForUi(partecipantiViaggio),
+    [partecipantiViaggio],
+  );
+  const payerLabels = useMemo(
+    () => getPayerLabels(tripParticipantsUi),
+    [tripParticipantsUi],
+  );
 
   async function loadCosti(): Promise<void> {
     try {
       setIsLoading(true);
-      const [costiRecords, prenotazioniRecords, settings] = await Promise.all([
+      const [costiRecords, prenotazioniRecords] = await Promise.all([
         getCostiByViaggio(viaggioId),
         getPrenotazioniByViaggio(viaggioId),
-        getImpostazioniApp(),
       ]);
       setCosti(costiRecords);
       setPrenotazioni(prenotazioniRecords);
-      setPayerLabels(getPayerLabels(settings));
       setError(null);
     } catch (loadError) {
       const message =
         loadError instanceof Error ? loadError.message : "Errore caricamento costi e prenotazioni";
       setError(message);
-      setPayerLabels({ labelIO: "IO", labelLEI: "LEI" });
     } finally {
       setIsLoading(false);
     }
@@ -657,7 +711,10 @@ export default function CostiViaggio({ viaggioId }: CostiViaggioProps) {
 
     for (const category of visibleCategories) {
       for (const manualItem of manualByCategory[category]) {
-        const quote = getManualQuote(manualItem);
+        const quote = getManualQuote(manualItem, {
+          labelA: payerLabels.labelIO,
+          labelB: payerLabels.labelLEI,
+        });
         quotaIoTotale += quote.quotaIo;
         quotaLeiTotale += quote.quotaLei;
 
@@ -672,7 +729,10 @@ export default function CostiViaggio({ viaggioId }: CostiViaggioProps) {
       }
 
       for (const bookingItem of bookingPaidByCategory[category]) {
-        const quoteResult = getBookingQuoteResult(bookingItem);
+        const quoteResult = getBookingQuoteResult(bookingItem, {
+          labelA: payerLabels.labelIO,
+          labelB: payerLabels.labelLEI,
+        });
         if (quoteResult.included) {
           quotaIoTotale += quoteResult.quotaIo;
           quotaLeiTotale += quoteResult.quotaLei;
@@ -990,7 +1050,10 @@ export default function CostiViaggio({ viaggioId }: CostiViaggioProps) {
               {manualItems.length > 0 && (
                 <ul className="listPlain cardsGrid">
                   {manualItems.map((costo) => {
-                    const quote = getManualQuote(costo);
+                    const quote = getManualQuote(costo, {
+                      labelA: payerLabels.labelIO,
+                      labelB: payerLabels.labelLEI,
+                    });
                     const litriText =
                       typeof costo.litri === "number" && Number.isFinite(costo.litri)
                         ? `${costo.litri.toFixed(1)} L`
@@ -1055,7 +1118,10 @@ export default function CostiViaggio({ viaggioId }: CostiViaggioProps) {
               {paidBookingItems.length > 0 && (
                 <ul className="listPlain cardsGrid">
                   {paidBookingItems.map((booking) => {
-                    const quoteResult = getBookingQuoteResult(booking);
+                    const quoteResult = getBookingQuoteResult(booking, {
+                      labelA: payerLabels.labelIO,
+                      labelB: payerLabels.labelLEI,
+                    });
                     const payerMissing = quoteResult.missingPayer;
                     const invalidSplit = quoteResult.invalidSplit;
                     const payerLabel = mapPayerDisplay(booking.pagatoDa, payerLabels);
@@ -1171,6 +1237,7 @@ export default function CostiViaggio({ viaggioId }: CostiViaggioProps) {
       <CostoFormModal
         isOpen={isModalOpen}
         viaggioId={viaggioId}
+        partecipantiViaggio={tripParticipantsUi}
         initialCosto={editingCosto}
         mode={modalMode}
         quickPresetCategoria={quickPresetCategoria}

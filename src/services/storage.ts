@@ -124,6 +124,20 @@ function toOptionalBoolean(value: unknown): boolean | undefined {
   return typeof value === "boolean" ? value : undefined;
 }
 
+function normalizeTripParticipants(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  const partecipanti = value
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0)
+    .slice(0, 6);
+
+  return partecipanti.length > 0 ? partecipanti : undefined;
+}
+
 function normalizePlannedRoute(value: unknown): Giorno["plannedRoute"] | undefined {
   if (typeof value !== "object" || value === null) {
     return undefined;
@@ -346,6 +360,7 @@ function normalizeViaggio(record: LegacyViaggioRecord): Viaggio {
     dataInizio,
     dataFine,
     area: typeof record.area === "string" ? record.area : "",
+    partecipanti: normalizeTripParticipants((record as { partecipanti?: unknown }).partecipanti),
     valuta: "EUR",
     stato: isViaggioStato(record.stato) ? record.stato : DEFAULT_VIAGGIO_STATO,
     note: typeof record.note === "string" ? record.note : undefined,
@@ -429,7 +444,7 @@ function normalizePrenotazione(record: LegacyPrenotazioneRecord): Prenotazione |
     costoTotale: toOptionalNumber(record.costoTotale),
     caparra: toOptionalNumber(record.caparra),
     pagato: toOptionalBoolean(record.pagato),
-    pagatoDa: isCostoPagatoDa(record.pagatoDa) ? record.pagatoDa : undefined,
+    pagatoDa: toOptionalString(record.pagatoDa) as Prenotazione["pagatoDa"] | undefined,
     quotaIo: toOptionalNumber(record.quotaIo),
     quotaLei: toOptionalNumber(record.quotaLei),
     note: toOptionalString(record.note),
@@ -469,7 +484,7 @@ function normalizeCosto(record: LegacyCostoRecord): Costo | null {
     importo,
     litri: toOptionalNumber(record.litri),
     prezzoLitro: toOptionalNumber(record.prezzoLitro),
-    pagatoDa: isCostoPagatoDa(record.pagatoDa) ? record.pagatoDa : "IO",
+    pagatoDa: (toOptionalString(record.pagatoDa) ?? "IO") as Costo["pagatoDa"],
     quotaIo: toOptionalNumber(record.quotaIo),
     quotaLei: toOptionalNumber(record.quotaLei),
     note: toOptionalString(record.note),
@@ -611,6 +626,20 @@ export async function saveViaggio(viaggio: Viaggio): Promise<void> {
 export async function getViaggi(): Promise<Viaggio[]> {
   const viaggi = await getAllRecords<LegacyViaggioRecord>(STORE_VIAGGI);
   return viaggi.map((viaggio) => normalizeViaggio(viaggio));
+}
+
+export async function getViaggioById(viaggioId: string): Promise<Viaggio | undefined> {
+  const db = await initDB();
+  const transaction = db.transaction(STORE_VIAGGI, "readonly");
+  const request = transaction.objectStore(STORE_VIAGGI).get(viaggioId);
+  const rawRecord = await requestToPromise(request);
+  await transactionToPromise(transaction);
+
+  if (!rawRecord) {
+    return undefined;
+  }
+
+  return normalizeViaggio(rawRecord as LegacyViaggioRecord);
 }
 
 export async function saveGiorno(giorno: Giorno): Promise<void> {

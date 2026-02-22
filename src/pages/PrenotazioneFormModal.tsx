@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Giorno } from "../models/Giorno";
-import type { ImpostazioniApp } from "../models/ImpostazioniApp";
 import type { Prenotazione, PrenotazioneStato, PrenotazioneTipo } from "../models/Prenotazione";
-import { getGiorniByViaggio, getImpostazioniApp, savePrenotazione } from "../services/storage";
+import { getGiorniByViaggio, getViaggioById, savePrenotazione } from "../services/storage";
 import "../styles/theme.css";
 
 interface PrenotazioneFormModalProps {
@@ -46,11 +45,13 @@ interface PrenotazioneFormState {
   costoTotale: string;
   caparra: string;
   pagato: boolean;
-  pagatoDa: "" | "IO" | "LEI" | "DIVISO";
+  pagatoDa: string;
   quotaIo: string;
   quotaLei: string;
   note: string;
 }
+
+const DEFAULT_UI_PARTECIPANTI = ["Peppe", "Elvira"];
 
 function isoToDateInput(value?: string): string {
   if (!value) {
@@ -73,8 +74,8 @@ function numberToString(value?: number): string {
   return typeof value === "number" && Number.isFinite(value) ? String(value) : "";
 }
 
-function toPagatoDaOption(value?: Prenotazione["pagatoDa"]): "" | "IO" | "LEI" | "DIVISO" {
-  if (value === "IO" || value === "LEI" || value === "DIVISO") {
+function toPagatoDaOption(value?: Prenotazione["pagatoDa"]): string {
+  if (typeof value === "string") {
     return value;
   }
   return "";
@@ -162,9 +163,20 @@ function formatDayOption(giorno: Giorno): string {
   return `${giorno.data} - ${giorno.titolo.trim() ? giorno.titolo : "Senza titolo"}`;
 }
 
-function getPayerLabels(settings?: ImpostazioniApp): { labelIO: string; labelLEI: string } {
-  const first = settings?.partecipanti[0]?.nome?.trim();
-  const second = settings?.partecipanti[1]?.nome?.trim();
+function normalizeTripParticipantsForUi(partecipanti?: string[]): string[] {
+  const sanitized = (Array.isArray(partecipanti) ? partecipanti : [])
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0)
+    .slice(0, 6);
+
+  return sanitized.length > 0 ? sanitized : [...DEFAULT_UI_PARTECIPANTI];
+}
+
+function getPayerLabels(partecipanti?: string[]): { labelIO: string; labelLEI: string } {
+  const normalized = normalizeTripParticipantsForUi(partecipanti);
+  const first = normalized[0]?.trim();
+  const second = normalized[1]?.trim();
   return {
     labelIO: first ? first : "IO",
     labelLEI: second ? second : "LEI",
@@ -182,6 +194,7 @@ export default function PrenotazioneFormModal({
   const [form, setForm] = useState<PrenotazioneFormState>(buildInitialState(initialPrenotazione));
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [tripParticipantsUi, setTripParticipantsUi] = useState<string[]>([...DEFAULT_UI_PARTECIPANTI]);
   const [payerLabels, setPayerLabels] = useState<{ labelIO: string; labelLEI: string }>({
     labelIO: "IO",
     labelLEI: "LEI",
@@ -222,7 +235,11 @@ export default function PrenotazioneFormModal({
       return;
     }
 
-    setForm(buildInitialState(initialPrenotazione));
+    const nextState = buildInitialState(initialPrenotazione);
+    if (!initialPrenotazione) {
+      nextState.pagatoDa = tripParticipantsUi[0] ?? "";
+    }
+    setForm(nextState);
     setError(null);
   }, [isOpen, initialPrenotazione]);
 
@@ -233,24 +250,44 @@ export default function PrenotazioneFormModal({
 
     let isActive = true;
 
-    async function loadSettings(): Promise<void> {
+    async function loadTripParticipants(): Promise<void> {
       try {
-        const settings = await getImpostazioniApp();
+        const viaggio = await getViaggioById(viaggioId);
+        const participants = normalizeTripParticipantsForUi(viaggio?.partecipanti);
         if (isActive) {
-          setPayerLabels(getPayerLabels(settings));
+          setTripParticipantsUi(participants);
+          setPayerLabels(getPayerLabels(participants));
+          if (!initialPrenotazione) {
+            setForm((current) => {
+              if (
+                current.pagatoDa &&
+                current.pagatoDa !== "IO" &&
+                current.pagatoDa !== "LEI" &&
+                current.pagatoDa !== DEFAULT_UI_PARTECIPANTI[0] &&
+                current.pagatoDa !== DEFAULT_UI_PARTECIPANTI[1]
+              ) {
+                return current;
+              }
+              return {
+                ...current,
+                pagatoDa: participants[0] ?? "",
+              };
+            });
+          }
         }
       } catch {
         if (isActive) {
+          setTripParticipantsUi([...DEFAULT_UI_PARTECIPANTI]);
           setPayerLabels({ labelIO: "IO", labelLEI: "LEI" });
         }
       }
     }
 
-    void loadSettings();
+    void loadTripParticipants();
     return () => {
       isActive = false;
     };
-  }, [isOpen]);
+  }, [isOpen, viaggioId]);
 
   const modalTitle = useMemo(() => {
     return initialPrenotazione ? "Modifica prenotazione" : "Nuova prenotazione";
@@ -258,6 +295,13 @@ export default function PrenotazioneFormModal({
 
   const costoTotaleNumber = useMemo(() => toOptionalNumber(form.costoTotale), [form.costoTotale]);
   const showPaymentSection = typeof costoTotaleNumber === "number" && costoTotaleNumber > 0;
+  const isSplitSupported = tripParticipantsUi.length === 2;
+  const currentPayerIsListed = useMemo(() => {
+    if (!form.pagatoDa || form.pagatoDa === "DIVISO") {
+      return true;
+    }
+    return tripParticipantsUi.some((name) => name === form.pagatoDa);
+  }, [form.pagatoDa, tripParticipantsUi]);
 
   if (!isOpen) {
     return null;
@@ -291,11 +335,16 @@ export default function PrenotazioneFormModal({
     const caparra = toOptionalNumber(form.caparra);
     const hasCostoTotale = typeof costoTotale === "number" && costoTotale > 0;
     const pagatoDa =
-      hasCostoTotale && form.pagatoDa ? (form.pagatoDa as "IO" | "LEI" | "DIVISO") : undefined;
+      hasCostoTotale && form.pagatoDa ? (form.pagatoDa as Prenotazione["pagatoDa"]) : undefined;
     let quotaIo: number | undefined;
     let quotaLei: number | undefined;
 
     if (pagatoDa === "DIVISO") {
+      if (!isSplitSupported) {
+        setError("Split avanzato non ancora supportato: usa un pagatore singolo.");
+        return;
+      }
+
       quotaIo = toOptionalNumber(form.quotaIo);
       quotaLei = toOptionalNumber(form.quotaLei);
 
@@ -680,14 +729,22 @@ export default function PrenotazioneFormModal({
                 onChange={(event) =>
                   setForm((current) => ({
                     ...current,
-                    pagatoDa: event.target.value as "" | "IO" | "LEI" | "DIVISO",
+                    pagatoDa: event.target.value,
                   }))
                 }
               >
                 <option value="">Pagato da (non impostato)</option>
-                <option value="IO">{payerLabels.labelIO}</option>
-                <option value="LEI">{payerLabels.labelLEI}</option>
-                <option value="DIVISO">DIVISO</option>
+                {tripParticipantsUi.map((name) => (
+                  <option key={`pren-payer-${name}`} value={name}>
+                    {name}
+                  </option>
+                ))}
+                {!currentPayerIsListed && form.pagatoDa && form.pagatoDa !== "DIVISO" && (
+                  <option value={form.pagatoDa}>{form.pagatoDa} (storico)</option>
+                )}
+                <option value="DIVISO" disabled={!isSplitSupported}>
+                  DIVISO{!isSplitSupported ? " (solo 2 partecipanti)" : ""}
+                </option>
               </select>
               <label className="prenCheckbox">
                 <input
@@ -725,6 +782,12 @@ export default function PrenotazioneFormModal({
                     }
                   />
                 </>
+              )}
+
+              {!isSplitSupported && (
+                <p className="metaText prenColSpan2" style={{ margin: "0.1rem 0", color: "#fbbf24" }}>
+                  Split avanzato non ancora supportato: usa un pagatore singolo.
+                </p>
               )}
             </>
           )}
