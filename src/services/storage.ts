@@ -212,6 +212,167 @@ function normalizePlannedRoute(value: unknown): Giorno["plannedRoute"] | undefin
   };
 }
 
+function isValidTimeHHMM(value: unknown): value is string {
+  if (typeof value !== "string") {
+    return false;
+  }
+
+  const match = /^(\d{2}):(\d{2})$/.exec(value);
+  if (!match) {
+    return false;
+  }
+
+  const hours = Number.parseInt(match[1], 10);
+  const minutes = Number.parseInt(match[2], 10);
+  return hours >= 0 && hours <= 23 && minutes >= 0 && minutes <= 59;
+}
+
+function normalizeDayPlanSegment(value: unknown): Giorno["dayPlan"] extends { segments: infer T }
+  ? T extends Array<infer S>
+    ? S | null
+    : null
+  : null {
+  if (typeof value !== "object" || value === null) {
+    return null;
+  }
+
+  const record = value as Record<string, unknown>;
+  const id = toOptionalString(record.id);
+  if (!id) {
+    return null;
+  }
+
+  if (record.type === "RIDE") {
+    const modeRequested = isPlannedRouteMode(record.modeRequested) ? record.modeRequested : "direct";
+    const modeApplied = isPlannedRouteMode(record.modeApplied) ? record.modeApplied : undefined;
+    const distanceKm = toOptionalNumber(record.distanceKm);
+    const durationMin = toOptionalNumber(record.durationMin);
+    const geometry = Array.isArray(record.geometry)
+      ? record.geometry
+          .map((point) => {
+            if (typeof point !== "object" || point === null) {
+              return null;
+            }
+            const lat = (point as { lat?: unknown }).lat;
+            const lon = (point as { lon?: unknown }).lon;
+            if (
+              typeof lat !== "number" ||
+              !Number.isFinite(lat) ||
+              lat < -90 ||
+              lat > 90 ||
+              typeof lon !== "number" ||
+              !Number.isFinite(lon) ||
+              lon < -180 ||
+              lon > 180
+            ) {
+              return null;
+            }
+            return { lat, lon };
+          })
+          .filter((point): point is { lat: number; lon: number } => point !== null)
+      : undefined;
+
+    return {
+      id,
+      type: "RIDE",
+      originText: typeof record.originText === "string" ? record.originText : "",
+      destinationText: typeof record.destinationText === "string" ? record.destinationText : "",
+      modeRequested,
+      modeApplied,
+      distanceKm,
+      durationMin,
+      geometry: geometry && geometry.length >= 2 ? geometry : undefined,
+    };
+  }
+
+  if (record.type === "FERRY") {
+    return {
+      id,
+      type: "FERRY",
+      departPortText: toOptionalString(record.departPortText),
+      arrivePortText: toOptionalString(record.arrivePortText),
+      departTimeLocal: isValidTimeHHMM(record.departTimeLocal) ? record.departTimeLocal : undefined,
+      arriveTimeLocal: isValidTimeHHMM(record.arriveTimeLocal) ? record.arriveTimeLocal : undefined,
+      company: toOptionalString(record.company),
+      note: toOptionalString(record.note),
+    };
+  }
+
+  return null;
+}
+
+function normalizeDayPlan(value: unknown): Giorno["dayPlan"] | undefined {
+  if (typeof value !== "object" || value === null) {
+    return undefined;
+  }
+
+  const record = value as Record<string, unknown>;
+  const nowIso = new Date().toISOString();
+  const rawSegments = Array.isArray(record.segments) ? record.segments : [];
+  const segments = rawSegments
+    .map((segment) => normalizeDayPlanSegment(segment))
+    .filter((segment): segment is NonNullable<ReturnType<typeof normalizeDayPlanSegment>> => segment !== null);
+
+  const boardingBufferMinRaw = toOptionalNumber(record.boardingBufferMin);
+  const boardingBufferMin =
+    boardingBufferMinRaw !== undefined && boardingBufferMinRaw >= 0
+      ? Math.round(boardingBufferMinRaw)
+      : 45;
+
+  return {
+    segments,
+    boardingBufferMin,
+    createdAt: toValidIso(record.createdAt) ?? nowIso,
+    updatedAt: toValidIso(record.updatedAt) ?? nowIso,
+  };
+}
+
+function normalizeDayPlanComputed(value: unknown): Giorno["dayPlanComputed"] | undefined {
+  if (typeof value !== "object" || value === null) {
+    return undefined;
+  }
+
+  const record = value as Record<string, unknown>;
+  const recommendedStartTimeLocal = isValidTimeHHMM(record.recommendedStartTimeLocal)
+    ? record.recommendedStartTimeLocal
+    : undefined;
+  const estimatedEndTimeLocal = isValidTimeHHMM(record.estimatedEndTimeLocal)
+    ? record.estimatedEndTimeLocal
+    : undefined;
+
+  let segmentTimes: Record<string, { start?: string; end?: string }> | undefined;
+  if (typeof record.segmentTimes === "object" && record.segmentTimes !== null) {
+    segmentTimes = {};
+    for (const [segmentId, timeValue] of Object.entries(record.segmentTimes as Record<string, unknown>)) {
+      if (typeof timeValue !== "object" || timeValue === null) {
+        continue;
+      }
+      const start = isValidTimeHHMM((timeValue as Record<string, unknown>).start)
+        ? ((timeValue as Record<string, unknown>).start as string)
+        : undefined;
+      const end = isValidTimeHHMM((timeValue as Record<string, unknown>).end)
+        ? ((timeValue as Record<string, unknown>).end as string)
+        : undefined;
+      if (start || end) {
+        segmentTimes[segmentId] = { start, end };
+      }
+    }
+    if (Object.keys(segmentTimes).length === 0) {
+      segmentTimes = undefined;
+    }
+  }
+
+  if (!recommendedStartTimeLocal && !estimatedEndTimeLocal && !segmentTimes) {
+    return undefined;
+  }
+
+  return {
+    recommendedStartTimeLocal,
+    estimatedEndTimeLocal,
+    segmentTimes,
+  };
+}
+
 function normalizeViaggio(record: LegacyViaggioRecord): Viaggio {
   const nome =
     typeof record.nome === "string"
@@ -253,6 +414,8 @@ function normalizeGiorno(record: LegacyGiornoRecord): Giorno {
     plannedOriginText: toOptionalString(record.plannedOriginText),
     plannedDestinationText: toOptionalString(record.plannedDestinationText),
     plannedRoute: normalizePlannedRoute(record.plannedRoute),
+    dayPlan: normalizeDayPlan(record.dayPlan),
+    dayPlanComputed: normalizeDayPlanComputed(record.dayPlanComputed),
     createdAt:
       typeof record.createdAt === "string" && record.createdAt
         ? record.createdAt
