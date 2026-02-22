@@ -133,6 +133,9 @@ function normalizePlannedRoute(value: unknown): Giorno["plannedRoute"] | undefin
     engine?: unknown;
     modeRequested?: unknown;
     modeApplied?: unknown;
+    source?: unknown;
+    pointsText?: unknown;
+    expandedUrl?: unknown;
     distanceKm?: unknown;
     durationMin?: unknown;
     geometry?: unknown;
@@ -201,10 +204,24 @@ function normalizePlannedRoute(value: unknown): Giorno["plannedRoute"] | undefin
     return undefined;
   }
 
+  const source =
+    record.source === "osrm-text" || record.source === "google-link"
+      ? record.source
+      : undefined;
+  const pointsText = Array.isArray(record.pointsText)
+    ? record.pointsText
+        .map((point) => toOptionalString(point))
+        .filter((point): point is string => Boolean(point))
+    : undefined;
+  const expandedUrl = toOptionalString(record.expandedUrl);
+
   return {
     engine: "osrm",
     modeRequested: record.modeRequested,
     modeApplied: record.modeApplied,
+    source,
+    pointsText: pointsText && pointsText.length >= 2 ? pointsText : undefined,
+    expandedUrl,
     distanceKm: record.distanceKm,
     durationMin: record.durationMin,
     geometry,

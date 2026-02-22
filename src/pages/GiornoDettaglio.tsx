@@ -53,6 +53,25 @@ interface RouteApiErrorResponse {
   error?: string;
 }
 
+interface GoogleLinkRouteStopResolved {
+  text: string;
+  displayName: string;
+  lat: number;
+  lon: number;
+}
+
+interface GoogleLinkRouteSuccessResponse {
+  ok: true;
+  modeRequested: "direct" | "curvy";
+  modeApplied: "direct" | "curvy";
+  expandedUrl: string;
+  pointsText: string[];
+  stopsResolved: GoogleLinkRouteStopResolved[];
+  distanceKm: number;
+  durationMin: number;
+  geometry: Array<{ lat: number; lon: number }>;
+}
+
 type PlannerSearchField = "originText" | "destinationText";
 
 interface PlannerSearchState {
@@ -261,6 +280,55 @@ function isGeocodeSuggestionArray(value: unknown): value is GeocodeSuggestion[] 
   return true;
 }
 
+function isGoogleLinkRouteSuccessResponse(value: unknown): value is GoogleLinkRouteSuccessResponse {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+
+  const record = value as Record<string, unknown>;
+  if (record.ok !== true) {
+    return false;
+  }
+  if (
+    (record.modeRequested !== "direct" && record.modeRequested !== "curvy") ||
+    (record.modeApplied !== "direct" && record.modeApplied !== "curvy")
+  ) {
+    return false;
+  }
+  if (typeof record.expandedUrl !== "string" || !record.expandedUrl.trim()) {
+    return false;
+  }
+  if (!Array.isArray(record.pointsText) || record.pointsText.length < 2) {
+    return false;
+  }
+  if (
+    !Array.isArray(record.geometry) ||
+    record.geometry.length < 2 ||
+    !record.geometry.every(
+      (point) =>
+        typeof point === "object" &&
+        point !== null &&
+        typeof (point as { lat?: unknown }).lat === "number" &&
+        typeof (point as { lon?: unknown }).lon === "number",
+    )
+  ) {
+    return false;
+  }
+  if (
+    typeof record.distanceKm !== "number" ||
+    !Number.isFinite(record.distanceKm) ||
+    typeof record.durationMin !== "number" ||
+    !Number.isFinite(record.durationMin)
+  ) {
+    return false;
+  }
+  if (!Array.isArray(record.stopsResolved) || record.stopsResolved.length < 2) {
+    return false;
+  }
+
+  return true;
+}
+
 export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioProps) {
   const [giorno, setGiorno] = useState<Giorno | null>(null);
   const [hotelPrenotazione, setHotelPrenotazione] = useState<Prenotazione | null>(null);
@@ -280,10 +348,8 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
   const [destinationText, setDestinationText] = useState("");
   const [plannedMapsUrlDraft, setPlannedMapsUrlDraft] = useState("");
   const [isSavingPlannedMapsUrl, setIsSavingPlannedMapsUrl] = useState(false);
-  const [showGoogleMapsPreview, setShowGoogleMapsPreview] = useState(false);
-  const [googleMapsPreviewState, setGoogleMapsPreviewState] = useState<"idle" | "loading" | "loaded" | "error">(
-    "idle",
-  );
+  const [isGeneratingGoogleLinkRoute, setIsGeneratingGoogleLinkRoute] = useState(false);
+  const [googleLinkRouteError, setGoogleLinkRouteError] = useState<string | null>(null);
   const [originSuggestions, setOriginSuggestions] = useState<GeocodeSuggestion[]>([]);
   const [destinationSuggestions, setDestinationSuggestions] = useState<GeocodeSuggestion[]>([]);
   const [plannerSearch, setPlannerSearch] = useState<PlannerSearchState | null>(null);
@@ -1096,15 +1162,100 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
   function handleOpenGoogleMapsFromDraft(): void {
     const trimmed = plannedMapsUrlDraft.trim();
     if (!trimmed) {
+      setGoogleLinkRouteError("Incolla il link Google Maps del giorno.");
       setError("Incolla il link Google Maps del giorno.");
       return;
     }
     if (!isValidHttpUrl(trimmed)) {
+      setGoogleLinkRouteError("Il link Google Maps deve iniziare con http.");
       setError("Il link Google Maps deve iniziare con http.");
       return;
     }
+    setGoogleLinkRouteError(null);
     setError(null);
     window.open(trimmed, "_blank", "noopener,noreferrer");
+  }
+
+  async function handleGenerateRouteFromGoogleLink(): Promise<void> {
+    if (!giorno) {
+      setError("Dati giorno non disponibili.");
+      return;
+    }
+
+    const trimmed = plannedMapsUrlDraft.trim();
+    if (!trimmed) {
+      const message = "Incolla il link Google Maps del giorno.";
+      setGoogleLinkRouteError(message);
+      setError(message);
+      return;
+    }
+
+    if (!isValidHttpUrl(trimmed)) {
+      const message = "Il link Google Maps deve iniziare con http.";
+      setGoogleLinkRouteError(message);
+      setError(message);
+      return;
+    }
+
+    setIsGeneratingGoogleLinkRoute(true);
+    setGoogleLinkRouteError(null);
+    setError(null);
+
+    try {
+      const response = await fetch("/api/google/route", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          url: trimmed,
+          mode: routeMode,
+        }),
+      });
+
+      const payload = (await response.json().catch(() => null)) as
+        | GoogleLinkRouteSuccessResponse
+        | RouteApiErrorResponse
+        | null;
+
+      if (!response.ok || !isGoogleLinkRouteSuccessResponse(payload)) {
+        const message =
+          typeof (payload as RouteApiErrorResponse | null)?.error === "string"
+            ? (payload as RouteApiErrorResponse).error
+            : "Link non interpretabile o route non disponibile";
+        throw new Error(message);
+      }
+
+      const nextGiorno: Giorno = {
+        ...giorno,
+        plannedMapsUrl: trimmed,
+        plannedOriginText: payload.pointsText[0],
+        plannedDestinationText: payload.pointsText[payload.pointsText.length - 1],
+        plannedRoute: {
+          engine: "osrm",
+          modeRequested: payload.modeRequested,
+          modeApplied: payload.modeApplied,
+          source: "google-link",
+          pointsText: payload.pointsText,
+          expandedUrl: payload.expandedUrl,
+          distanceKm: payload.distanceKm,
+          durationMin: payload.durationMin,
+          geometry: payload.geometry,
+          createdAt: new Date().toISOString(),
+        },
+      };
+
+      await persistGiorno(nextGiorno);
+      setPlannedMapsUrlDraft(trimmed);
+      setGoogleLinkRouteError(null);
+    } catch (routeError) {
+      const message =
+        routeError instanceof Error ? routeError.message : "Errore generazione mappa da Google Link";
+      setGoogleLinkRouteError(message);
+      setError(message);
+    } finally {
+      setIsGeneratingGoogleLinkRoute(false);
+    }
   }
 
   function handleOpenHotelMap(): void {
@@ -1218,12 +1369,7 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
               type="url"
               className="inputField"
               value={plannedMapsUrlDraft}
-              onChange={(event) => {
-                setPlannedMapsUrlDraft(event.target.value);
-                if (showGoogleMapsPreview) {
-                  setGoogleMapsPreviewState("idle");
-                }
-              }}
+              onChange={(event) => setPlannedMapsUrlDraft(event.target.value)}
               onBlur={() => void handleSavePlannedMapsUrlFromDraft()}
               placeholder="Incolla URL Google Maps del giorno"
             />
@@ -1244,61 +1390,49 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
               >
                 {isSavingPlannedMapsUrl ? "Salvataggio..." : "Salva link"}
               </button>
-              <label className="metaText" style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem" }}>
-                <input
-                  type="checkbox"
-                  checked={showGoogleMapsPreview}
-                  onChange={(event) => {
-                    const nextValue = event.target.checked;
-                    setShowGoogleMapsPreview(nextValue);
-                    setGoogleMapsPreviewState(nextValue ? "loading" : "idle");
-                  }}
-                />
-                Mostra anteprima
-              </label>
+              <select
+                className="inputField"
+                value={routeMode}
+                onChange={(event) => setRouteMode(event.target.value as "direct" | "curvy")}
+                style={{ width: 150 }}
+              >
+                <option value="direct">Direct</option>
+                <option value="curvy">Curvy</option>
+              </select>
+              <button
+                type="button"
+                className="buttonPrimary"
+                onClick={() => void handleGenerateRouteFromGoogleLink()}
+                disabled={isGeneratingGoogleLinkRoute || !plannedMapsUrlDraft.trim()}
+              >
+                {isGeneratingGoogleLinkRoute ? "Generazione..." : "Genera mappa da Google Link"}
+              </button>
             </div>
-
-            {showGoogleMapsPreview && (
-              <div>
-                {isValidHttpUrl(plannedMapsUrlDraft) ? (
-                  <div>
-                    <div
-                      style={{
-                        height: 380,
-                        width: "100%",
-                        border: "1px solid #2A3445",
-                        borderRadius: 12,
-                        overflow: "hidden",
-                        background: "#0F172A",
-                      }}
-                    >
-                      <iframe
-                        title="Anteprima Google Maps"
-                        src={plannedMapsUrlDraft.trim()}
-                        style={{ width: "100%", height: "100%", border: 0 }}
-                        loading="lazy"
-                        referrerPolicy="no-referrer-when-downgrade"
-                        onLoad={() => setGoogleMapsPreviewState("loaded")}
-                        onError={() => setGoogleMapsPreviewState("error")}
-                      />
-                    </div>
-                    <p className="metaText" style={{ margin: "0.55rem 0 0 0" }}>
-                      Se l&apos;anteprima non si carica, Google blocca l&apos;incorporamento: usa VAI.
-                    </p>
-                    {googleMapsPreviewState === "error" && (
-                      <p className="errorText" style={{ margin: "0.35rem 0 0 0" }}>
-                        Anteprima non disponibile. Usa VAI (Google Maps).
-                      </p>
-                    )}
-                  </div>
-                ) : (
-                  <p className="metaText" style={{ margin: 0 }}>
-                    Inserisci un link Google Maps valido (http/https) per l&apos;anteprima. Se l&apos;anteprima non si
-                    carica, usa VAI.
-                  </p>
-                )}
-              </div>
+            {googleLinkRouteError && (
+              <p className="errorText" style={{ margin: "0.15rem 0 0 0" }}>
+                {googleLinkRouteError}
+              </p>
             )}
+
+            {giorno?.plannedRoute?.source === "google-link" &&
+              Array.isArray(giorno.plannedRoute.geometry) &&
+              giorno.plannedRoute.geometry.length >= 2 && (
+                <div style={{ display: "grid", gap: "0.55rem" }}>
+                  <p className="metaText" style={{ margin: 0 }}>
+                    Percorso ricostruito da punti Google (puo differire dal percorso esatto di Google).
+                  </p>
+                  <p className="metaText" style={{ margin: 0 }}>
+                    Distanza stimata: {giorno.plannedRoute.distanceKm.toFixed(2)} km · Durata stimata:{" "}
+                    {giorno.plannedRoute.durationMin.toFixed(1)} min
+                  </p>
+                  {Array.isArray(giorno.plannedRoute.pointsText) && giorno.plannedRoute.pointsText.length >= 2 && (
+                    <p className="metaText" style={{ margin: 0 }}>
+                      Punti: {giorno.plannedRoute.pointsText.join(" → ")}
+                    </p>
+                  )}
+                  <DayMap segments={[giorno.plannedRoute.geometry]} />
+                </div>
+              )}
           </div>
         </div>
 

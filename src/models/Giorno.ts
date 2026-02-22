@@ -7,6 +7,9 @@ export interface PlannedRoute {
   engine: "osrm";
   modeRequested: "direct" | "curvy";
   modeApplied: "direct" | "curvy";
+  source?: "osrm-text" | "google-link";
+  pointsText?: string[];
+  expandedUrl?: string;
   distanceKm: number;
   durationMin: number;
   geometry: PlannedRoutePoint[];
