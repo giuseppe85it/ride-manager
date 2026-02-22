@@ -157,15 +157,17 @@ Relazioni:
 - Reverse geocoding inizio/fine percorso con fallback sicuro.
 - Dashboard Viaggio read-only con aggregazioni reali.
 - Prenotazioni HOTEL/TRAGHETTO con filtri, ricerca e CRUD.
+- Home: Import GPX rapido BMW one-click con auto-assign a Viaggio/Giorno per data (crea Viaggio/Giorno se mancanti).
+- Tab Giorni: card con azioni top-right (menu "..." + elimina) allineate e cliccabili senza sovrapporsi alla pill stato.
 ### PARZIALE
-- Home: voci placeholder (Import GPX rapido, Backup / Export).
+- Home: voci placeholder parziali (Backup / Export).
 - Dettaglio Viaggio: tab placeholder (Costi, Media).
 - Storage: varie query lato client via `getAll + filter` (non indicizzate).
 ### TODO
 1. Implementare tab Costi con registrazione spese e aggregazioni per viaggio/giorno.
 2. Implementare tab Media per allegati del viaggio.
 3. Implementare Backup/Restore JSON locale.
-4. Implementare ingresso rapido import GPX dalla Home.
+4. Rifinire feedback UI import GPX rapido (toast/progress/errori per file multipli).
 5. Introdurre indici/query mirate in storage per dataset grandi.
 
 ## File chiave (path)

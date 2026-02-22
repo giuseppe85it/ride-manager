@@ -1,5 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { ChangeEvent } from "react";
 import type { ImpostazioniApp } from "../models/ImpostazioniApp";
+import { importBmwGpxAndAutoAssign } from "../services/gpxService";
 import { getImpostazioniApp } from "../services/storage";
 import ImpostazioniModal from "./ImpostazioniModal";
 import "./Home.css";
@@ -15,6 +17,8 @@ function showComingSoon(featureName: string): void {
 export default function Home({ onOpenViaggi }: HomeProps) {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [impostazioni, setImpostazioni] = useState<ImpostazioniApp | undefined>(undefined);
+  const [isQuickImporting, setIsQuickImporting] = useState(false);
+  const quickImportInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     let isActive = true;
@@ -42,6 +46,27 @@ export default function Home({ onOpenViaggi }: HomeProps) {
     return impostazioni?.partecipanti.length ?? 0;
   }, [impostazioni]);
 
+  async function handleQuickBmwImport(event: ChangeEvent<HTMLInputElement>): Promise<void> {
+    const files = Array.from(event.target.files ?? []);
+    if (files.length === 0) {
+      return;
+    }
+
+    setIsQuickImporting(true);
+    try {
+      const summary = await importBmwGpxAndAutoAssign(files);
+      window.alert(
+        `Importati ${summary.imported} GPX (${summary.createdDays} giorni creati, ${summary.createdTrips} viaggi creati)`,
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Errore import GPX BMW";
+      window.alert(`Errore import GPX rapido: ${message}`);
+    } finally {
+      setIsQuickImporting(false);
+      event.target.value = "";
+    }
+  }
+
   return (
     <main className="pageWrap">
       <div className="pageContainer">
@@ -61,10 +86,11 @@ export default function Home({ onOpenViaggi }: HomeProps) {
             <button
               type="button"
               className="home-card"
-              onClick={() => showComingSoon("Import GPX rapido")}
+              onClick={() => quickImportInputRef.current?.click()}
+              disabled={isQuickImporting}
             >
               <h2>Import GPX rapido</h2>
-              <p>In arrivo</p>
+              <p>{isQuickImporting ? "Import in corso..." : "BMW one-click auto-assign"}</p>
             </button>
 
             <button
@@ -91,6 +117,15 @@ export default function Home({ onOpenViaggi }: HomeProps) {
           </section>
         </div>
       </div>
+
+      <input
+        ref={quickImportInputRef}
+        type="file"
+        accept=".gpx"
+        multiple
+        onChange={(event) => void handleQuickBmwImport(event)}
+        style={{ display: "none" }}
+      />
 
       <ImpostazioniModal
         isOpen={isSettingsOpen}

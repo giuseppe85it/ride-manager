@@ -282,42 +282,91 @@ export default function Giorni({ viaggioId, onBack, onOpenGiorno, embedded = fal
         <ul className="listPlain cardsGrid">
           {giorni.map((giorno) => (
             <li key={giorno.id} className="card detailCard" style={{ position: "relative", padding: "0.25rem" }}>
-              <button
-                type="button"
-                aria-label="Azioni giorno"
-                onClick={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  setMenuOpenForDayId((current) => (current === giorno.id ? null : giorno.id));
-                }}
+              <div
+                onClick={(event) => event.stopPropagation()}
                 onMouseDown={(event) => {
                   event.preventDefault();
                   event.stopPropagation();
                 }}
                 style={{
                   position: "absolute",
-                  top: "0.55rem",
-                  right: "2.65rem",
-                  width: 30,
-                  height: 30,
-                  borderRadius: 999,
-                  border: "1px solid #2A3445",
-                  background: "#111827",
-                  color: "#FFFFFF",
-                  cursor: "pointer",
-                  fontSize: "1rem",
-                  lineHeight: 1,
-                  zIndex: 2,
-                }}
-                onMouseEnter={(event) => {
-                  event.currentTarget.style.borderColor = "#1F6FEB";
-                }}
-                onMouseLeave={(event) => {
-                  event.currentTarget.style.borderColor = "#2A3445";
+                  top: "0.45rem",
+                  right: "0.45rem",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  zIndex: 3,
                 }}
               >
-                {"\u22ef"}
-              </button>
+                <button
+                  type="button"
+                  aria-label="Azioni giorno"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    setMenuOpenForDayId((current) => (current === giorno.id ? null : giorno.id));
+                  }}
+                  onMouseDown={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                  }}
+                  style={{
+                    width: 38,
+                    height: 38,
+                    borderRadius: 999,
+                    border: "1px solid #2A3445",
+                    background: "#111827",
+                    color: "#FFFFFF",
+                    cursor: "pointer",
+                    fontSize: "1rem",
+                    lineHeight: 1,
+                    display: "grid",
+                    placeItems: "center",
+                  }}
+                  onMouseEnter={(event) => {
+                    event.currentTarget.style.borderColor = "#1F6FEB";
+                  }}
+                  onMouseLeave={(event) => {
+                    event.currentTarget.style.borderColor = "#2A3445";
+                  }}
+                >
+                  {"\u22ef"}
+                </button>
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    void handleDeleteGiorno(giorno.id);
+                  }}
+                  onMouseDown={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                  }}
+                  aria-label="Cancella giorno"
+                  style={{
+                    width: 38,
+                    height: 38,
+                    borderRadius: 999,
+                    border: "1px solid #E11D48",
+                    background: "rgba(225,29,72,0.15)",
+                    color: "#E11D48",
+                    cursor: "pointer",
+                    fontSize: "1rem",
+                    lineHeight: 1,
+                    display: "grid",
+                    placeItems: "center",
+                  }}
+                  onMouseEnter={(event) => {
+                    event.currentTarget.style.background = "rgba(225,29,72,0.28)";
+                  }}
+                  onMouseLeave={(event) => {
+                    event.currentTarget.style.background = "rgba(225,29,72,0.15)";
+                  }}
+                >
+                  {"\u2715"}
+                </button>
+              </div>
               {menuOpenForDayId === giorno.id && (
                 <div
                   className="card"
@@ -328,8 +377,8 @@ export default function Giorni({ viaggioId, onBack, onOpenGiorno, embedded = fal
                   }}
                   style={{
                     position: "absolute",
-                    top: "2.55rem",
-                    right: "2.65rem",
+                    top: "3rem",
+                    right: "0.45rem",
                     minWidth: 170,
                     padding: "0.35rem",
                     zIndex: 3,
@@ -355,38 +404,9 @@ export default function Giorni({ viaggioId, onBack, onOpenGiorno, embedded = fal
               )}
               <button
                 type="button"
-                onClick={() => void handleDeleteGiorno(giorno.id)}
-                aria-label="Cancella giorno"
-                style={{
-                  position: "absolute",
-                  top: "0.55rem",
-                  right: "0.55rem",
-                  width: 30,
-                  height: 30,
-                  borderRadius: 999,
-                  border: "1px solid #E11D48",
-                  background: "rgba(225,29,72,0.15)",
-                  color: "#E11D48",
-                  cursor: "pointer",
-                  fontSize: "1rem",
-                  lineHeight: 1,
-                  zIndex: 1,
-                }}
-                onMouseEnter={(event) => {
-                  event.currentTarget.style.background = "rgba(225,29,72,0.28)";
-                }}
-                onMouseLeave={(event) => {
-                  event.currentTarget.style.background = "rgba(225,29,72,0.15)";
-                }}
-                onClickCapture={(event) => event.stopPropagation()}
-              >
-                {"\u2715"}
-              </button>
-              <button
-                type="button"
                 onClick={() => onOpenGiorno(giorno.id)}
                 className="itemButton"
-                style={{ paddingRight: "3rem" }}
+                style={{ paddingRight: "6.2rem", paddingTop: "0.45rem" }}
               >
                 <div style={{ display: "flex", justifyContent: "space-between", gap: "0.8rem", flexWrap: "wrap" }}>
                   <strong>{formatDate(giorno.data)}</strong>

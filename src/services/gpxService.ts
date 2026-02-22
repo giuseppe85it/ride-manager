@@ -1,6 +1,15 @@
 import type { GPXFile } from "../models/GPXFile";
+import type { Giorno } from "../models/Giorno";
 import type { TrackPoint } from "../models/TrackPoint";
-import { saveGPXFile, saveTrackPoints } from "./storage";
+import type { Viaggio } from "../models/Viaggio";
+import {
+  getGiorniByViaggio,
+  getViaggi,
+  saveGiorno,
+  saveGPXFile,
+  saveTrackPoints,
+  saveViaggio,
+} from "./storage";
 
 export interface ParsedTrackPoint {
   lat: number;
@@ -27,6 +36,12 @@ interface GPXRecordOptions {
   pointsCount: number;
 }
 
+export interface AutoAssignImportSummary {
+  imported: number;
+  createdTrips: number;
+  createdDays: number;
+}
+
 function generateId(prefix = "id"): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
     return crypto.randomUUID();
@@ -44,20 +59,105 @@ function toNumber(value: string | null | undefined): number | undefined {
   return Number.isNaN(parsed) ? undefined : parsed;
 }
 
-export async function importGPXFile(file: File, giornoId = ""): Promise<GPXFile> {
-  if (!giornoId.trim()) {
-    throw new Error("giornoId is required for GPX import");
+function toLocalDateYmd(iso: string): string {
+  const parsed = new Date(iso);
+  if (Number.isNaN(parsed.getTime())) {
+    throw new Error("Invalid timestamp for local date conversion");
   }
 
-  const text = await file.text();
-  const parsed = parseGPX(text);
+  const year = parsed.getFullYear();
+  const month = String(parsed.getMonth() + 1).padStart(2, "0");
+  const day = String(parsed.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
 
-  if (parsed.trackPoints.length === 0) {
-    throw new Error("No valid BMW track points found in GPX");
+function formatDateForTripName(dateYmd: string): string {
+  const [year, month, day] = dateYmd.split("-");
+  if (!year || !month || !day) {
+    return dateYmd;
+  }
+  return `${day}/${month}/${year}`;
+}
+
+function parseYmdToMs(dateYmd: string): number {
+  const [year, month, day] = dateYmd.split("-").map((value) => Number.parseInt(value, 10));
+  if (!year || !month || !day) {
+    return Number.NaN;
+  }
+  return new Date(year, month - 1, day).getTime();
+}
+
+function getTripRangeDays(viaggio: Viaggio): number {
+  const startMs = parseYmdToMs(viaggio.dataInizio);
+  const endMs = parseYmdToMs(viaggio.dataFine);
+  if (Number.isNaN(startMs) || Number.isNaN(endMs) || endMs < startMs) {
+    return Number.MAX_SAFE_INTEGER;
+  }
+  return Math.round((endMs - startMs) / 86400000) + 1;
+}
+
+function chooseBestViaggioForDate(viaggi: Viaggio[], dateYmd: string): Viaggio | undefined {
+  const targetMs = parseYmdToMs(dateYmd);
+  const matches = viaggi.filter((viaggio) => viaggio.dataInizio <= dateYmd && dateYmd <= viaggio.dataFine);
+  if (matches.length === 0) {
+    return undefined;
   }
 
+  return [...matches].sort((a, b) => {
+    const rangeDelta = getTripRangeDays(a) - getTripRangeDays(b);
+    if (rangeDelta !== 0) {
+      return rangeDelta;
+    }
+
+    const aStartDiff = Math.abs(parseYmdToMs(a.dataInizio) - targetMs);
+    const bStartDiff = Math.abs(parseYmdToMs(b.dataInizio) - targetMs);
+    if (aStartDiff !== bStartDiff) {
+      return aStartDiff - bStartDiff;
+    }
+
+    return a.dataInizio.localeCompare(b.dataInizio);
+  })[0];
+}
+
+function buildNewAutoTrip(dateYmd: string): Viaggio {
+  return {
+    id: generateId("viaggio"),
+    nome: `BMW - ${formatDateForTripName(dateYmd)}`,
+    dataInizio: dateYmd,
+    dataFine: dateYmd,
+    area: "",
+    valuta: "EUR",
+    stato: "PIANIFICAZIONE",
+    createdAt: new Date().toISOString(),
+  };
+}
+
+function buildNewAutoDay(viaggioId: string, dateYmd: string): Giorno {
+  return {
+    id: generateId("giorno"),
+    viaggioId,
+    data: dateYmd,
+    titolo: "GIRO BMW",
+    stato: "FATTO",
+    createdAt: new Date().toISOString(),
+  };
+}
+
+function deriveLocalDateFromParsed(parsed: ParsedGPX, stats: GPXStats): string {
+  if (stats.startTime) {
+    return toLocalDateYmd(stats.startTime);
+  }
+
+  const firstValidTime = parsed.trackPoints.find((point) => !Number.isNaN(Date.parse(point.time)))?.time;
+  if (!firstValidTime) {
+    throw new Error("GPX senza timestamp valido per auto-assign");
+  }
+
+  return toLocalDateYmd(firstValidTime);
+}
+
+async function persistParsedGpxToGiorno(file: File, giornoId: string, parsed: ParsedGPX, stats: GPXStats): Promise<GPXFile> {
   const gpxFileId = generateId("gpx");
-  const stats = computeStats(parsed.trackPoints);
   const gpxFile = createGPXFileRecord(file, stats, {
     id: gpxFileId,
     giornoId,
@@ -78,6 +178,74 @@ export async function importGPXFile(file: File, giornoId = ""): Promise<GPXFile>
   await saveGPXFile(gpxFile);
 
   return gpxFile;
+}
+
+export async function importGPXFile(file: File, giornoId = ""): Promise<GPXFile> {
+  if (!giornoId.trim()) {
+    throw new Error("giornoId is required for GPX import");
+  }
+
+  const text = await file.text();
+  const parsed = parseGPX(text);
+
+  if (parsed.trackPoints.length === 0) {
+    throw new Error("No valid BMW track points found in GPX");
+  }
+
+  const stats = computeStats(parsed.trackPoints);
+  return persistParsedGpxToGiorno(file, giornoId, parsed, stats);
+}
+
+export async function importBmwGpxAndAutoAssign(files: File[]): Promise<AutoAssignImportSummary> {
+  const validFiles = files.filter((file) => file instanceof File);
+  if (validFiles.length === 0) {
+    return { imported: 0, createdTrips: 0, createdDays: 0 };
+  }
+
+  const viaggi = await getViaggi();
+  const giorniByViaggioCache = new Map<string, Giorno[]>();
+  let createdTrips = 0;
+  let createdDays = 0;
+  let imported = 0;
+
+  for (const file of validFiles) {
+    const text = await file.text();
+    const parsed = parseGPX(text);
+    if (parsed.trackPoints.length === 0) {
+      throw new Error(`Nessun trackpoint BMW valido in ${file.name}`);
+    }
+
+    const stats = computeStats(parsed.trackPoints);
+    const dateYmd = deriveLocalDateFromParsed(parsed, stats);
+
+    let viaggio = chooseBestViaggioForDate(viaggi, dateYmd);
+    if (!viaggio) {
+      viaggio = buildNewAutoTrip(dateYmd);
+      await saveViaggio(viaggio);
+      viaggi.push(viaggio);
+      giorniByViaggioCache.set(viaggio.id, []);
+      createdTrips += 1;
+    }
+
+    let giorni = giorniByViaggioCache.get(viaggio.id);
+    if (!giorni) {
+      giorni = await getGiorniByViaggio(viaggio.id);
+      giorniByViaggioCache.set(viaggio.id, giorni);
+    }
+
+    let giorno = giorni.find((item) => item.data === dateYmd);
+    if (!giorno) {
+      giorno = buildNewAutoDay(viaggio.id, dateYmd);
+      await saveGiorno(giorno);
+      giorni.push(giorno);
+      createdDays += 1;
+    }
+
+    await persistParsedGpxToGiorno(file, giorno.id, parsed, stats);
+    imported += 1;
+  }
+
+  return { imported, createdTrips, createdDays };
 }
 
 export function parseGPX(text: string): ParsedGPX {
