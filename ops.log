@@ -87,3 +87,189 @@
   - STATE_NOW.md
   - docs/ops-log/2026-02-19_22-23.md
   - ops.log
+## 2026-02-20 16:56:27
+- Commit: 9ede08d248be6ea688645ef354a0330887e227ba
+- Message: aggiornamento
+- Report: docs/ops-log/2026-02-20_16-56.md
+- Modified files:
+  - CHANGELOG.md
+  - STATE_NOW.md
+  - docs/ops-log/2026-02-19_22-23_1.md
+  - ops.log
+  - src/models/Prenotazione.ts
+  - src/pages/DettaglioViaggio.tsx
+  - src/pages/GiornoDettaglio.tsx
+  - src/pages/PrenotazioneFormModal.tsx
+  - src/pages/PrenotazioniViaggio.css
+  - src/pages/PrenotazioniViaggio.tsx
+  - src/pages/Viaggi.css
+  - src/pages/Viaggi.tsx
+  - src/services/storage.ts
+  - src/services/tripStats.ts
+  - src/utils/trackSegmentation.ts
+## 2026-02-21 18:00:03
+- Commit: e70dccc230111e097a1682ce4aebae28918bb9e1
+- Message: docs: aggiorna STATE_NOW con stato operativo verificato
+- Report: docs/ops-log/2026-02-21_18-00.md
+- Modified files:
+  - STATE_NOW.md
+## 2026-02-21 18:11:05
+- Commit: 365f010bd6c1e411f8575bba65bae23a4c592a2d
+- Message: docs: automatizza aggiornamento STATE_NOW su commit
+- Report: docs/ops-log/2026-02-21_18-11.md
+- Modified files:
+  - .githooks/post-commit
+  - .githooks/pre-commit
+  - README.md
+  - STATE_NOW.md
+  - scripts/generateOpsLog.cjs
+  - scripts/generateStateNow.cjs
+## 2026-02-21 18:27:00
+- Commit: 791700071f9262a9ef7a6d30e4df0fd841573961
+- Message: feat: integra prenotazioni nel tab costi con totali separati
+- Report: docs/ops-log/2026-02-21_18-27.md
+- Modified files:
+  - STATE_NOW.md
+  - src/pages/CostiViaggio.tsx
+## 2026-02-21 18:41:43
+- Commit: 9517f6eab4cde6719320e5ed43c5f9648e913358
+- Message: feat: migliora costi con payer prenotazioni e breakdown per categoria
+- Report: docs/ops-log/2026-02-21_18-41.md
+- Modified files:
+  - STATE_NOW.md
+  - src/models/Prenotazione.ts
+  - src/pages/CostiViaggio.tsx
+  - src/pages/PrenotazioneFormModal.tsx
+  - src/services/storage.ts
+## 2026-02-21 19:19:25
+- Commit: 9487967921222633a75275248186beb7de338066
+- Message: feat: aggiunge impostazioni partecipanti e label payer dinamiche
+- Report: docs/ops-log/2026-02-21_19-19.md
+- Modified files:
+  - STATE_NOW.md
+  - src/models/ImpostazioniApp.ts
+  - src/pages/CostiViaggio.tsx
+  - src/pages/CostoFormModal.tsx
+  - src/pages/Home.tsx
+  - src/pages/ImpostazioniModal.tsx
+  - src/pages/PrenotazioneFormModal.tsx
+  - src/services/storage.ts
+## 2026-02-21 20:39:38
+- Commit: 4cf6755a955e5409e3685a9e4d8c8860d76bbe3e
+- Message: feat: aggiunge quick add benzina/pedaggi e categoria pedaggi
+- Report: docs/ops-log/2026-02-21_20-39.md
+- Modified files:
+  - src/models/Costo.ts
+  - src/pages/CostiViaggio.tsx
+  - src/pages/CostoFormModal.tsx
+  - src/services/storage.ts
+## 2026-02-21 20:44:57
+- Commit: d59f59ac8536f358bc8c8b4d2ffcc725af07efef
+- Message: fix: semplifica quick add benzina con prezzo litro calcolato
+- Report: docs/ops-log/2026-02-21_20-44.md
+- Modified files:
+  - src/pages/CostoFormModal.tsx
+## 2026-02-21 21:39:59
+- Commit: cdb7e637072ea8a7267f44c16ede46843410895e
+- Message: Add Google Maps planning link support for Giorno
+- Report: docs/ops-log/2026-02-21_21-39.md
+- Modified files:
+  - STATE_NOW.md
+  - src/models/Giorno.ts
+  - src/pages/Giorni.tsx
+  - src/pages/GiornoDettaglio.tsx
+  - src/services/storage.ts
+## 2026-02-21 22:08:11
+- Commit: 8c061f4798d1cb7f06a2e53ce1f1ec31517baf39
+- Message: Add local OSRM planned routing backend and Giorno preview
+- Report: docs/ops-log/2026-02-21_22-08.md
+- Modified files:
+  - STATE_NOW.md
+  - package.json
+  - server/index.js
+  - src/models/Giorno.ts
+  - src/pages/GiornoDettaglio.tsx
+  - src/services/storage.ts
+  - vite.config.ts
+## 2026-02-22 10:41:39
+- Commit: ff347992d8ab1c66380bc8d3c7ba89408098c3d7
+- Message: Add text-based route planning geocoding flow
+- Report: docs/ops-log/2026-02-22_10-41.md
+- Modified files:
+  - STATE_NOW.md
+  - server/index.js
+  - src/models/Giorno.ts
+  - src/pages/GiornoDettaglio.tsx
+  - src/services/storage.ts
+## 2026-02-22 11:13:21
+- Commit: 223b8d07f9ec04706fe688766f17f068707476f4
+- Message: Add day timeline planner with ride ferry segments
+- Report: docs/ops-log/2026-02-22_11-13.md
+- Modified files:
+  - STATE_NOW.md
+  - src/models/Giorno.ts
+  - src/pages/GiornoDettaglio.tsx
+  - src/services/storage.ts
+## 2026-02-22 11:24:35
+- Commit: d6d6e38e4f52492326e305f30e73e7fe3fe7bdc4
+- Message: fix: resolve JSX parse error in GiornoDettaglio time range
+- Report: docs/ops-log/2026-02-22_11-24.md
+- Modified files:
+  - src/pages/GiornoDettaglio.tsx
+## 2026-02-22 11:39:29
+- Commit: fce43c87e3ba7c1ebb8ca80c083034dbdeaae301
+- Message: Simplify day planner and bind ferry segments to bookings
+- Report: docs/ops-log/2026-02-22_11-39.md
+- Modified files:
+  - STATE_NOW.md
+  - src/models/Giorno.ts
+  - src/pages/GiornoDettaglio.tsx
+  - src/services/storage.ts
+## 2026-02-22 11:40:35
+- Commit: fa6a6ff1dd37ce468ae3f9d9d83660d51c631f33
+- Message: docs: update STATE_NOW for simplified day planner
+- Report: docs/ops-log/2026-02-22_11-40.md
+- Modified files:
+  - (no file changes)
+## 2026-02-22 11:51:28
+- Commit: e88c4f97ac85d442062b2f5174e3966fce551c82
+- Message: fix: prevent /api/route 400 for ride to hotel and show clear errors
+- Report: docs/ops-log/2026-02-22_11-51.md
+- Modified files:
+  - src/pages/GiornoDettaglio.tsx
+## 2026-02-22 12:01:32
+- Commit: 40814b0d7d1b66f3937e14feb7749e7ab800443b
+- Message: feat: add VAI button for ride segments (open Google Maps directions)
+- Report: docs/ops-log/2026-02-22_12-01.md
+- Modified files:
+  - src/pages/GiornoDettaglio.tsx
+## 2026-02-22 12:02:17
+- Commit: 1a74d3b45afeea1dc4341a6ae207589d8c47cae0
+- Message: docs: note VAI button for ride segments and OsmAnd todo
+- Report: docs/ops-log/2026-02-22_12-02.md
+- Modified files:
+  - (no file changes)
+## 2026-02-22 12:11:49
+- Commit: 8a56f17b7e4523cafb2677a39ff4cf02352e9dd5
+- Message: hide legacy planning when day timeline exists
+- Report: docs/ops-log/2026-02-22_12-11.md
+- Modified files:
+  - src/pages/GiornoDettaglio.tsx
+## 2026-02-22 12:12:32
+- Commit: 810a038719c571e6a65d7f1b050f196315e28d37
+- Message: docs: note legacy planning hidden when timeline exists
+- Report: docs/ops-log/2026-02-22_12-12.md
+- Modified files:
+  - (no file changes)
+## 2026-02-22 12:20:12
+- Commit: 693f24ceabab570999f586c61d9971103ff2be75
+- Message: fix: restore timeline priority in GiornoDettaglio planner
+- Report: docs/ops-log/2026-02-22_12-20.md
+- Modified files:
+  - src/pages/GiornoDettaglio.tsx
+## 2026-02-22 12:20:41
+- Commit: 86b8e6b79a2b51c13b30eecc26d4dc7213024cdd
+- Message: docs: note timeline planner priority over legacy planning
+- Report: docs/ops-log/2026-02-22_12-20_1.md
+- Modified files:
+  - (no file changes)
