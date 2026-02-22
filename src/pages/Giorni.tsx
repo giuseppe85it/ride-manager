@@ -54,6 +54,9 @@ export default function Giorni({ viaggioId, onBack, onOpenGiorno, embedded = fal
   const [hotelOptions, setHotelOptions] = useState<Prenotazione[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [menuOpenForDayId, setMenuOpenForDayId] = useState<string | null>(null);
+  const [editTitleDay, setEditTitleDay] = useState<Giorno | null>(null);
+  const [editTitleValue, setEditTitleValue] = useState("");
 
   async function fetchGiorniByViaggio(targetViaggioId: string): Promise<Giorno[]> {
     return getGiorniByViaggio(targetViaggioId);
@@ -87,6 +90,30 @@ export default function Giorni({ viaggioId, onBack, onOpenGiorno, embedded = fal
       isActive = false;
     };
   }, [viaggioId]);
+
+  useEffect(() => {
+    if (!menuOpenForDayId) {
+      return;
+    }
+
+    const handleDocumentClick = (): void => {
+      setMenuOpenForDayId(null);
+    };
+
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === "Escape") {
+        setMenuOpenForDayId(null);
+        setEditTitleDay(null);
+      }
+    };
+
+    document.addEventListener("mousedown", handleDocumentClick);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handleDocumentClick);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [menuOpenForDayId]);
 
   async function handleNuovoGiorno(): Promise<void> {
     if (!data) {
@@ -143,6 +170,37 @@ export default function Giorni({ viaggioId, onBack, onOpenGiorno, embedded = fal
       setGiorni(records);
     } catch (deleteError) {
       const message = deleteError instanceof Error ? deleteError.message : "Errore eliminazione giorno";
+      setError(message);
+    }
+  }
+
+  function openEditTitleModal(giorno: Giorno): void {
+    setMenuOpenForDayId(null);
+    setEditTitleDay(giorno);
+    setEditTitleValue(giorno.titolo ?? "");
+    setError(null);
+  }
+
+  async function handleSaveGiornoTitle(): Promise<void> {
+    if (!editTitleDay) {
+      return;
+    }
+
+    const updatedDay: Giorno = {
+      ...editTitleDay,
+      titolo: editTitleValue.trim(),
+    };
+
+    try {
+      await saveGiorno(updatedDay);
+      const records = await fetchGiorniByViaggio(viaggioId);
+      setGiorni(records);
+      setEditTitleDay(null);
+      setEditTitleValue("");
+      setError(null);
+    } catch (saveError) {
+      const message =
+        saveError instanceof Error ? saveError.message : "Errore aggiornamento titolo giorno";
       setError(message);
     }
   }
@@ -226,6 +284,63 @@ export default function Giorni({ viaggioId, onBack, onOpenGiorno, embedded = fal
             <li key={giorno.id} className="card detailCard" style={{ position: "relative", padding: "0.25rem" }}>
               <button
                 type="button"
+                aria-label="Azioni giorno"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setMenuOpenForDayId((current) => (current === giorno.id ? null : giorno.id));
+                }}
+                style={{
+                  position: "absolute",
+                  top: "0.55rem",
+                  right: "2.65rem",
+                  width: 30,
+                  height: 30,
+                  borderRadius: 999,
+                  border: "1px solid #2A3445",
+                  background: "#111827",
+                  color: "#FFFFFF",
+                  cursor: "pointer",
+                  fontSize: "1rem",
+                  lineHeight: 1,
+                  zIndex: 2,
+                }}
+                onMouseEnter={(event) => {
+                  event.currentTarget.style.borderColor = "#1F6FEB";
+                }}
+                onMouseLeave={(event) => {
+                  event.currentTarget.style.borderColor = "#2A3445";
+                }}
+              >
+                {"\u22ef"}
+              </button>
+              {menuOpenForDayId === giorno.id && (
+                <div
+                  className="card"
+                  onClick={(event) => event.stopPropagation()}
+                  style={{
+                    position: "absolute",
+                    top: "2.55rem",
+                    right: "2.65rem",
+                    minWidth: 170,
+                    padding: "0.35rem",
+                    zIndex: 3,
+                    border: "1px solid #2A3445",
+                  }}
+                >
+                  <button
+                    type="button"
+                    className="itemButton"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      openEditTitleModal(giorno);
+                    }}
+                  >
+                    Modifica titolo
+                  </button>
+                </div>
+              )}
+              <button
+                type="button"
                 onClick={() => void handleDeleteGiorno(giorno.id)}
                 aria-label="Cancella giorno"
                 style={{
@@ -249,6 +364,7 @@ export default function Giorni({ viaggioId, onBack, onOpenGiorno, embedded = fal
                 onMouseLeave={(event) => {
                   event.currentTarget.style.background = "rgba(225,29,72,0.15)";
                 }}
+                onClickCapture={(event) => event.stopPropagation()}
               >
                 {"\u2715"}
               </button>
@@ -269,6 +385,54 @@ export default function Giorni({ viaggioId, onBack, onOpenGiorno, embedded = fal
             </li>
           ))}
         </ul>
+      )}
+
+      {editTitleDay && (
+        <div
+          onClick={() => setEditTitleDay(null)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(11,18,32,0.72)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "1rem",
+            zIndex: 50,
+          }}
+        >
+          <div
+            className="card detailCard"
+            onClick={(event) => event.stopPropagation()}
+            style={{ width: "100%", maxWidth: 460, padding: "1rem" }}
+          >
+            <h3 style={{ margin: "0 0 0.75rem 0" }}>Modifica titolo giorno</h3>
+            <input
+              type="text"
+              value={editTitleValue}
+              onChange={(event) => setEditTitleValue(event.target.value)}
+              className="inputField"
+              placeholder="Titolo giorno"
+              autoFocus
+            />
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                gap: "0.5rem",
+                marginTop: "0.85rem",
+                flexWrap: "wrap",
+              }}
+            >
+              <button type="button" className="buttonGhost" onClick={() => setEditTitleDay(null)}>
+                Annulla
+              </button>
+              <button type="button" className="buttonPrimary" onClick={() => void handleSaveGiornoTitle()}>
+                Salva
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </>
   );
