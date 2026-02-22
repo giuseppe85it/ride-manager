@@ -644,6 +644,42 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
     }));
   }
 
+  async function handleAddRideSegmentBeforeFirstFerry(destinationText: string): Promise<void> {
+    const destination = destinationText.trim();
+    if (!destination) {
+      setError("Seleziona prima un traghetto con porto di partenza.");
+      return;
+    }
+
+    await updateDayPlan((currentDayPlan) => {
+      const firstFerryIndex = currentDayPlan.segments.findIndex((segment) => segment.type === "FERRY");
+      const nextRide: RideSegment = {
+        id: generatePlanSegmentId("ride"),
+        type: "RIDE",
+        originText: "",
+        destinationText: destination,
+        modeRequested: "direct",
+      };
+
+      if (firstFerryIndex < 0) {
+        return {
+          ...currentDayPlan,
+          segments: [...currentDayPlan.segments, nextRide],
+        };
+      }
+
+      return {
+        ...currentDayPlan,
+        segments: [
+          ...currentDayPlan.segments.slice(0, firstFerryIndex),
+          nextRide,
+          ...currentDayPlan.segments.slice(firstFerryIndex),
+        ],
+      };
+    });
+    setError(null);
+  }
+
   async function handleDeletePlanSegment(segmentId: string): Promise<void> {
     await updateDayPlan((currentDayPlan) => ({
       ...currentDayPlan,
@@ -1058,6 +1094,48 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
       ),
     [ferryPrenotazioni],
   );
+  const firstTimelineFerryWithBooking = useMemo(() => {
+    if (!dayPlan) {
+      return null;
+    }
+
+    for (const segment of dayPlan.segments) {
+      if (segment.type !== "FERRY" || !segment.prenotazioneId) {
+        continue;
+      }
+      const prenotazione = ferryPrenotazioniById.get(segment.prenotazioneId);
+      if (prenotazione) {
+        return { segment, prenotazione };
+      }
+    }
+
+    return null;
+  }, [dayPlan, ferryPrenotazioniById]);
+  const rideToPortDestinationCandidate = useMemo(() => {
+    const prenotazione = firstTimelineFerryWithBooking?.prenotazione;
+    if (!prenotazione) {
+      return null;
+    }
+
+    const portoPartenza = typeof prenotazione.portoPartenza === "string" ? prenotazione.portoPartenza.trim() : "";
+    const localita = typeof prenotazione.localita === "string" ? prenotazione.localita.trim() : "";
+    const titolo = typeof prenotazione.titolo === "string" ? prenotazione.titolo.trim() : "";
+
+    if (portoPartenza && localita) {
+      return `${portoPartenza} ${localita}`;
+    }
+    if (portoPartenza) {
+      return portoPartenza;
+    }
+    if (localita) {
+      return `${localita} porto`;
+    }
+    if (titolo) {
+      return titolo;
+    }
+    return null;
+  }, [firstTimelineFerryWithBooking]);
+  const canAddRideToPort = Boolean(rideToPortDestinationCandidate);
   const dayPlanRideSegmentsForMap = useMemo(
     () =>
       (dayPlan?.segments ?? [])
@@ -1114,6 +1192,23 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
             <button type="button" className="buttonPrimary" onClick={() => void handleAddRideSegment()}>
               + Tratta moto
             </button>
+            {dayPlan && (
+              <button
+                type="button"
+                className="buttonGhost"
+                onClick={() =>
+                  void handleAddRideSegmentBeforeFirstFerry(rideToPortDestinationCandidate ?? "")
+                }
+                disabled={!canAddRideToPort}
+                title={
+                  canAddRideToPort
+                    ? `Precompila arrivo: ${rideToPortDestinationCandidate}`
+                    : "Seleziona un segmento traghetto con prenotazione e porto di partenza"
+                }
+              >
+                + Tratta verso porto
+              </button>
+            )}
             <button type="button" className="buttonGhost" onClick={() => void handleAddFerrySegment()}>
               + Traghetto
             </button>
@@ -1496,6 +1591,9 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
           <summary style={{ cursor: "pointer", fontWeight: 700, marginBottom: "0.6rem" }}>
             Pianificazione legacy (opzionale)
           </summary>
+          <p className="metaText" style={{ margin: "0 0 0.6rem 0" }}>
+            Usa la TIMELINE sopra per le tratte navigabili (VAI).
+          </p>
           <h2 style={{ margin: "0 0 0.6rem 0" }}>Pianificazione</h2>
           <p className="metaText" style={{ margin: "0 0 0.6rem 0" }}>
             Routing locale OSRM con geocoding Nominatim (input testo).
