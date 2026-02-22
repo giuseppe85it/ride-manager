@@ -160,6 +160,7 @@ Relazioni:
 - Dashboard Viaggio read-only con aggregazioni reali.
 - Prenotazioni HOTEL/TRAGHETTO con filtri, ricerca e CRUD.
 - Costi: categorie `PRANZO` e `CENA` supportate (modello, validazione storage, modale inserimento, filtri/breakdown).
+- Partecipanti per viaggio: gestione spostata nel menu azioni (`⋯`) del DettaglioViaggio con modale dedicato (non piu' sempre visibile in pagina).
 ### PARZIALE
 - Home: voci placeholder (Backup / Export).
 - Dettaglio Viaggio: tab placeholder (Costi, Media).

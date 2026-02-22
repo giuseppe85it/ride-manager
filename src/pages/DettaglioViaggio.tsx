@@ -108,7 +108,8 @@ export default function DettaglioViaggio({
   const [statsLoading, setStatsLoading] = useState(false);
   const [statsError, setStatsError] = useState<string | null>(null);
   const [partecipantiDraft, setPartecipantiDraft] = useState<string[]>([...DEFAULT_UI_PARTECIPANTI]);
-  const [partecipantiTouched, setPartecipantiTouched] = useState(false);
+  const [isTripActionsMenuOpen, setIsTripActionsMenuOpen] = useState(false);
+  const [isPartecipantiModalOpen, setIsPartecipantiModalOpen] = useState(false);
   const [partecipantiSaving, setPartecipantiSaving] = useState(false);
   const [partecipantiError, setPartecipantiError] = useState<string | null>(null);
   const [partecipantiInfo, setPartecipantiInfo] = useState<string | null>(null);
@@ -180,72 +181,37 @@ export default function DettaglioViaggio({
 
   useEffect(() => {
     setPartecipantiDraft(getPartecipantiForUi(viaggio));
-    setPartecipantiTouched(false);
     setPartecipantiSaving(false);
     setPartecipantiError(null);
     setPartecipantiInfo(null);
   }, [viaggio?.id, viaggio?.partecipanti]);
 
   useEffect(() => {
-    if (!viaggio || !partecipantiTouched) {
+    if (!isTripActionsMenuOpen) {
       return;
     }
 
-    let cancelled = false;
-    const timeoutId = window.setTimeout(() => {
-      const validation = sanitizePartecipantiDraft(partecipantiDraft);
-      if (!validation.sanitized) {
-        setPartecipantiError(validation.error ?? "Partecipanti non validi.");
-        setPartecipantiInfo(null);
-        return;
+    function handleOutsideClick(event: MouseEvent): void {
+      const target = event.target as HTMLElement | null;
+      if (!target?.closest(".tripActionsWrap")) {
+        setIsTripActionsMenuOpen(false);
       }
+    }
 
-      if (samePartecipanti(validation.sanitized, viaggio.partecipanti)) {
-        setPartecipantiError(null);
-        setPartecipantiInfo("Partecipanti aggiornati.");
-        setPartecipantiTouched(false);
-        return;
+    function handleEsc(event: KeyboardEvent): void {
+      if (event.key === "Escape") {
+        setIsTripActionsMenuOpen(false);
       }
+    }
 
-      async function persist(): Promise<void> {
-        setPartecipantiSaving(true);
-        setPartecipantiError(null);
-        setPartecipantiInfo(null);
-
-        try {
-          const updated: Viaggio = {
-            ...viaggio,
-            partecipanti: validation.sanitized,
-          };
-          await saveViaggio(updated);
-          if (cancelled) {
-            return;
-          }
-          setViaggio(updated);
-          setPartecipantiTouched(false);
-          setPartecipantiInfo("Partecipanti salvati.");
-        } catch (saveError) {
-          if (cancelled) {
-            return;
-          }
-          const message =
-            saveError instanceof Error ? saveError.message : "Errore salvataggio partecipanti";
-          setPartecipantiError(message);
-        } finally {
-          if (!cancelled) {
-            setPartecipantiSaving(false);
-          }
-        }
-      }
-
-      void persist();
-    }, 350);
+    document.addEventListener("mousedown", handleOutsideClick);
+    document.addEventListener("keydown", handleEsc);
 
     return () => {
-      cancelled = true;
-      window.clearTimeout(timeoutId);
+      document.removeEventListener("mousedown", handleOutsideClick);
+      document.removeEventListener("keydown", handleEsc);
     };
-  }, [partecipantiDraft, partecipantiTouched, viaggio]);
+  }, [isTripActionsMenuOpen]);
 
   const partecipantiAttiviLabel = useMemo(() => {
     return partecipantiDraft
@@ -254,15 +220,110 @@ export default function DettaglioViaggio({
       .join(", ");
   }, [partecipantiDraft]);
 
+  function openPartecipantiModal(): void {
+    setIsTripActionsMenuOpen(false);
+    setPartecipantiDraft(getPartecipantiForUi(viaggio));
+    setPartecipantiError(null);
+    setPartecipantiInfo(null);
+    setIsPartecipantiModalOpen(true);
+  }
+
+  async function handleSavePartecipanti(): Promise<void> {
+    if (!viaggio) {
+      return;
+    }
+
+    const validation = sanitizePartecipantiDraft(partecipantiDraft);
+    if (!validation.sanitized) {
+      setPartecipantiError(validation.error ?? "Partecipanti non validi.");
+      return;
+    }
+
+    if (samePartecipanti(validation.sanitized, viaggio.partecipanti)) {
+      setPartecipantiInfo("Nessuna modifica da salvare.");
+      setPartecipantiError(null);
+      return;
+    }
+
+    setPartecipantiSaving(true);
+    setPartecipantiError(null);
+    setPartecipantiInfo(null);
+
+    try {
+      const updated: Viaggio = {
+        ...viaggio,
+        partecipanti: validation.sanitized,
+      };
+      await saveViaggio(updated);
+      setViaggio(updated);
+      setPartecipantiInfo("Partecipanti salvati.");
+      setIsPartecipantiModalOpen(false);
+    } catch (saveError) {
+      const message =
+        saveError instanceof Error ? saveError.message : "Errore salvataggio partecipanti";
+      setPartecipantiError(message);
+    } finally {
+      setPartecipantiSaving(false);
+    }
+  }
+
   return (
     <main className="pageWrap">
       <div className="pageContainer">
-        <div className="toolbar">
+        <div className="toolbar" style={{ alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
           <button type="button" onClick={onBack} className="buttonGhost">
             {"\u2190"} Viaggi
           </button>
           <h1 className="pageTitle">{viaggio?.nome ?? "Dettaglio viaggio"}</h1>
           {viaggio && <span className="badge">{statoViaggioLabel(viaggio.stato)}</span>}
+          {viaggio && (
+            <div
+              className="tripActionsWrap"
+              style={{ marginLeft: "auto", position: "relative", display: "flex", alignItems: "center" }}
+            >
+              <button
+                type="button"
+                className="buttonGhost"
+                aria-label="Azioni viaggio"
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  setIsTripActionsMenuOpen((current) => !current);
+                }}
+                style={{
+                  width: "38px",
+                  height: "38px",
+                  padding: 0,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                {"\u22ef"}
+              </button>
+
+              {isTripActionsMenuOpen && (
+                <div
+                  className="card"
+                  onClick={(event) => event.stopPropagation()}
+                  style={{
+                    position: "absolute",
+                    top: "44px",
+                    right: 0,
+                    zIndex: 30,
+                    minWidth: "220px",
+                    padding: "0.35rem",
+                    display: "grid",
+                    gap: "0.2rem",
+                  }}
+                >
+                  <button type="button" className="buttonGhost" onClick={openPartecipantiModal}>
+                    Gestisci partecipanti
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {viaggio && (
@@ -282,118 +343,6 @@ export default function DettaglioViaggio({
         )}
 
         {error && <p className="errorText">{error}</p>}
-
-        {viaggio && (
-          <div className="card detailCard" style={{ marginBottom: "1rem", padding: "1rem" }}>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                gap: "0.75rem",
-                flexWrap: "wrap",
-              }}
-            >
-              <h2 style={{ margin: 0, fontSize: "1rem" }}>Partecipanti viaggio</h2>
-              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
-                <label className="metaText" style={{ margin: 0 }}>
-                  Numero partecipanti
-                </label>
-                <select
-                  className="inputField"
-                  style={{ minWidth: "90px" }}
-                  value={String(partecipantiDraft.length)}
-                  onChange={(event) => {
-                    const nextCount = Number.parseInt(event.target.value, 10);
-                    if (!Number.isFinite(nextCount) || nextCount < 1 || nextCount > 6) {
-                      return;
-                    }
-                    setPartecipantiTouched(true);
-                    setPartecipantiInfo(null);
-                    setPartecipantiError(null);
-                    setPartecipantiDraft((current) => {
-                      const next = current.slice(0, nextCount);
-                      while (next.length < nextCount) {
-                        next.push("");
-                      }
-                      return next;
-                    });
-                  }}
-                >
-                  {[1, 2, 3, 4, 5, 6].map((count) => (
-                    <option key={`participants-count-${count}`} value={count}>
-                      {count}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  type="button"
-                  className="buttonGhost"
-                  onClick={() => {
-                    setPartecipantiTouched(true);
-                    setPartecipantiInfo(null);
-                    setPartecipantiError(null);
-                    setPartecipantiDraft([...DEFAULT_UI_PARTECIPANTI]);
-                  }}
-                >
-                  Ripristina default
-                </button>
-              </div>
-            </div>
-
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-                gap: "0.65rem",
-                marginTop: "0.8rem",
-              }}
-            >
-              {partecipantiDraft.map((nome, index) => (
-                <input
-                  key={`trip-partecipante-${index}`}
-                  className="inputField"
-                  type="text"
-                  value={nome}
-                  placeholder={`Partecipante ${index + 1}`}
-                  onChange={(event) => {
-                    const nextValue = event.target.value;
-                    setPartecipantiTouched(true);
-                    setPartecipantiInfo(null);
-                    setPartecipantiError(null);
-                    setPartecipantiDraft((current) =>
-                      current.map((item, itemIndex) => (itemIndex === index ? nextValue : item)),
-                    );
-                  }}
-                />
-              ))}
-            </div>
-
-            <p className="metaText" style={{ margin: "0.75rem 0 0 0" }}>
-              Partecipanti attivi: {partecipantiAttiviLabel || "Compila i nomi"}
-            </p>
-            {partecipantiDraft.length !== 2 && (
-              <p className="metaText" style={{ margin: "0.35rem 0 0 0", color: "#fbbf24" }}>
-                Split DIVISO e saldo 50/50 attualmente supportati solo con 2 partecipanti.
-              </p>
-            )}
-            {partecipantiSaving && (
-              <p className="metaText" style={{ margin: "0.35rem 0 0 0" }}>
-                Salvataggio partecipanti...
-              </p>
-            )}
-            {!partecipantiSaving && partecipantiInfo && (
-              <p className="metaText" style={{ margin: "0.35rem 0 0 0", color: "#93c5fd" }}>
-                {partecipantiInfo}
-              </p>
-            )}
-            {partecipantiError && (
-              <p className="errorText" style={{ margin: "0.35rem 0 0 0" }}>
-                {partecipantiError}
-              </p>
-            )}
-          </div>
-        )}
 
         <div className="card" style={{ padding: "0.75rem", marginBottom: "1rem" }}>
           <div
@@ -497,6 +446,192 @@ export default function DettaglioViaggio({
             <p className="metaText" style={{ margin: 0 }}>
               In arrivo
             </p>
+          </div>
+        )}
+
+        {isPartecipantiModalOpen && viaggio && (
+          <div
+            onClick={() => {
+              if (!partecipantiSaving) {
+                setIsPartecipantiModalOpen(false);
+                setPartecipantiError(null);
+                setPartecipantiInfo(null);
+              }
+            }}
+            style={{
+              position: "fixed",
+              inset: 0,
+              background: "rgba(3, 7, 18, 0.7)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "1rem",
+              zIndex: 60,
+            }}
+          >
+            <div
+              className="card detailCard"
+              onClick={(event) => event.stopPropagation()}
+              style={{ width: "100%", maxWidth: "760px", padding: "1rem" }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: "0.75rem",
+                  flexWrap: "wrap",
+                }}
+              >
+                <h2 style={{ margin: 0, fontSize: "1.05rem" }}>Gestisci partecipanti</h2>
+                <button
+                  type="button"
+                  className="buttonGhost"
+                  onClick={() => {
+                    if (!partecipantiSaving) {
+                      setIsPartecipantiModalOpen(false);
+                      setPartecipantiError(null);
+                      setPartecipantiInfo(null);
+                    }
+                  }}
+                  disabled={partecipantiSaving}
+                >
+                  {"\u2715"}
+                </button>
+              </div>
+
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.5rem",
+                  flexWrap: "wrap",
+                  marginTop: "0.8rem",
+                }}
+              >
+                <label className="metaText" style={{ margin: 0 }}>
+                  Numero partecipanti
+                </label>
+                <select
+                  className="inputField"
+                  style={{ minWidth: "90px" }}
+                  value={String(partecipantiDraft.length)}
+                  onChange={(event) => {
+                    const nextCount = Number.parseInt(event.target.value, 10);
+                    if (!Number.isFinite(nextCount) || nextCount < 1 || nextCount > 6) {
+                      return;
+                    }
+                    setPartecipantiInfo(null);
+                    setPartecipantiError(null);
+                    setPartecipantiDraft((current) => {
+                      const next = current.slice(0, nextCount);
+                      while (next.length < nextCount) {
+                        next.push("");
+                      }
+                      return next;
+                    });
+                  }}
+                >
+                  {[1, 2, 3, 4, 5, 6].map((count) => (
+                    <option key={`participants-modal-count-${count}`} value={count}>
+                      {count}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  className="buttonGhost"
+                  onClick={() => {
+                    setPartecipantiInfo(null);
+                    setPartecipantiError(null);
+                    setPartecipantiDraft([...DEFAULT_UI_PARTECIPANTI]);
+                  }}
+                  disabled={partecipantiSaving}
+                >
+                  Ripristina default
+                </button>
+              </div>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                  gap: "0.65rem",
+                  marginTop: "0.8rem",
+                }}
+              >
+                {partecipantiDraft.map((nome, index) => (
+                  <input
+                    key={`trip-partecipante-modal-${index}`}
+                    className="inputField"
+                    type="text"
+                    value={nome}
+                    placeholder={`Partecipante ${index + 1}`}
+                    onChange={(event) => {
+                      const nextValue = event.target.value;
+                      setPartecipantiInfo(null);
+                      setPartecipantiError(null);
+                      setPartecipantiDraft((current) =>
+                        current.map((item, itemIndex) => (itemIndex === index ? nextValue : item)),
+                      );
+                    }}
+                    disabled={partecipantiSaving}
+                  />
+                ))}
+              </div>
+
+              <p className="metaText" style={{ margin: "0.75rem 0 0 0" }}>
+                Partecipanti attivi: {partecipantiAttiviLabel || "Compila i nomi"}
+              </p>
+              {partecipantiDraft.length !== 2 && (
+                <p className="metaText" style={{ margin: "0.35rem 0 0 0", color: "#fbbf24" }}>
+                  Split DIVISO e saldo 50/50 attualmente supportati solo con 2 partecipanti.
+                </p>
+              )}
+              {partecipantiInfo && (
+                <p className="metaText" style={{ margin: "0.35rem 0 0 0", color: "#93c5fd" }}>
+                  {partecipantiInfo}
+                </p>
+              )}
+              {partecipantiError && (
+                <p className="errorText" style={{ margin: "0.35rem 0 0 0" }}>
+                  {partecipantiError}
+                </p>
+              )}
+
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "flex-end",
+                  gap: "0.5rem",
+                  flexWrap: "wrap",
+                  marginTop: "1rem",
+                }}
+              >
+                <button
+                  type="button"
+                  className="buttonGhost"
+                  onClick={() => {
+                    if (!partecipantiSaving) {
+                      setIsPartecipantiModalOpen(false);
+                      setPartecipantiError(null);
+                      setPartecipantiInfo(null);
+                    }
+                  }}
+                  disabled={partecipantiSaving}
+                >
+                  Chiudi
+                </button>
+                <button
+                  type="button"
+                  className="buttonPrimary"
+                  onClick={() => void handleSavePartecipanti()}
+                  disabled={partecipantiSaving}
+                >
+                  {partecipantiSaving ? "Salvataggio..." : "Salva"}
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>
