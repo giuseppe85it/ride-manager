@@ -67,7 +67,15 @@ interface BalancePayerLabels {
   labelB: string;
 }
 
-const CATEGORY_ORDER: CostoCategoria[] = ["BENZINA", "PEDAGGI", "HOTEL", "TRAGHETTI", "EXTRA"];
+const CATEGORY_ORDER: CostoCategoria[] = [
+  "BENZINA",
+  "PEDAGGI",
+  "PRANZO",
+  "CENA",
+  "HOTEL",
+  "TRAGHETTI",
+  "EXTRA",
+];
 const DEFAULT_UI_PARTECIPANTI = ["Peppe", "Elvira"];
 
 function formatDate(value: string): string {
@@ -93,6 +101,8 @@ function formatEuro(value: number): string {
 function categoriaLabel(categoria: CostoCategoria): string {
   if (categoria === "BENZINA") return "Benzina";
   if (categoria === "PEDAGGI") return "Pedaggi";
+  if (categoria === "PRANZO") return "Pranzo";
+  if (categoria === "CENA") return "Cena";
   if (categoria === "HOTEL") return "Hotel";
   if (categoria === "TRAGHETTI") return "Traghetti";
   return "Extra";
@@ -509,6 +519,8 @@ function buildEmptyTotals(): Record<CostoCategoria, CategoryTotals> {
   return {
     BENZINA: { confirmed: 0, unpaid: 0, total: 0 },
     PEDAGGI: { confirmed: 0, unpaid: 0, total: 0 },
+    PRANZO: { confirmed: 0, unpaid: 0, total: 0 },
+    CENA: { confirmed: 0, unpaid: 0, total: 0 },
     HOTEL: { confirmed: 0, unpaid: 0, total: 0 },
     TRAGHETTI: { confirmed: 0, unpaid: 0, total: 0 },
     EXTRA: { confirmed: 0, unpaid: 0, total: 0 },
@@ -519,6 +531,8 @@ function buildEmptyCostListMap(): Record<CostoCategoria, Costo[]> {
   return {
     BENZINA: [],
     PEDAGGI: [],
+    PRANZO: [],
+    CENA: [],
     HOTEL: [],
     TRAGHETTI: [],
     EXTRA: [],
@@ -529,6 +543,8 @@ function buildEmptyBookingListMap(): Record<CostoCategoria, BookingCost[]> {
   return {
     BENZINA: [],
     PEDAGGI: [],
+    PRANZO: [],
+    CENA: [],
     HOTEL: [],
     TRAGHETTI: [],
     EXTRA: [],

@@ -1,4 +1,11 @@
-export type CostoCategoria = "BENZINA" | "PEDAGGI" | "HOTEL" | "TRAGHETTI" | "EXTRA";
+export type CostoCategoria =
+  | "BENZINA"
+  | "PEDAGGI"
+  | "PRANZO"
+  | "CENA"
+  | "HOTEL"
+  | "TRAGHETTI"
+  | "EXTRA";
 export type CostoPagatoDa = "IO" | "LEI" | "DIVISO";
 
 export interface Costo {

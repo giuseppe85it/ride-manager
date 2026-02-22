@@ -85,6 +85,8 @@ function isCostoCategoria(value: unknown): value is CostoCategoria {
   return (
     value === "BENZINA" ||
     value === "PEDAGGI" ||
+    value === "PRANZO" ||
+    value === "CENA" ||
     value === "HOTEL" ||
     value === "TRAGHETTI" ||
     value === "EXTRA"

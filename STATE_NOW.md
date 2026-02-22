@@ -159,6 +159,7 @@ Relazioni:
 - Reverse geocoding inizio/fine percorso con fallback sicuro.
 - Dashboard Viaggio read-only con aggregazioni reali.
 - Prenotazioni HOTEL/TRAGHETTO con filtri, ricerca e CRUD.
+- Costi: categorie `PRANZO` e `CENA` supportate (modello, validazione storage, modale inserimento, filtri/breakdown).
 ### PARZIALE
 - Home: voci placeholder (Backup / Export).
 - Dettaglio Viaggio: tab placeholder (Costi, Media).

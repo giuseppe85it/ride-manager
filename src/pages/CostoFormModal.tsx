@@ -389,6 +389,8 @@ export default function CostoFormModal({
             >
               <option value="BENZINA">BENZINA</option>
               <option value="PEDAGGI">PEDAGGI</option>
+              <option value="PRANZO">PRANZO</option>
+              <option value="CENA">CENA</option>
               <option value="HOTEL">HOTEL</option>
               <option value="TRAGHETTI">TRAGHETTI</option>
               <option value="EXTRA">EXTRA</option>
