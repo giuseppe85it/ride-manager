@@ -95,6 +95,24 @@ function formatTimeIT(iso: string): string {
   }).format(parsed);
 }
 
+function openGoogleMapsDirections(originText: string, destinationText: string): boolean {
+  const origin = originText.trim();
+  const destination = destinationText.trim();
+
+  if (!origin || !destination) {
+    return false;
+  }
+
+  const url =
+    "https://www.google.com/maps/dir/?api=1" +
+    `&origin=${encodeURIComponent(origin)}` +
+    `&destination=${encodeURIComponent(destination)}` +
+    "&travelmode=driving";
+
+  window.open(url, "_blank", "noopener,noreferrer");
+  return true;
+}
+
 function formatGapDuration(durationSec: number): string {
   const totalMinutes = Math.round(durationSec / 60);
   if (totalMinutes < 1) {
@@ -877,6 +895,38 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
     }
   }
 
+  function handleOpenRideSegmentNavigation(segmentId: string): void {
+    const currentDayPlan = giorno?.dayPlan;
+    if (!currentDayPlan) {
+      const message = "Planner giorno non disponibile.";
+      setRideSegmentUiError({ segmentId, message });
+      setError(message);
+      return;
+    }
+
+    const segment = currentDayPlan.segments.find(
+      (item): item is RideSegment => item.id === segmentId && item.type === "RIDE",
+    );
+
+    if (!segment) {
+      const message = "Segmento moto non trovato.";
+      setRideSegmentUiError({ segmentId, message });
+      setError(message);
+      return;
+    }
+
+    const opened = openGoogleMapsDirections(segment.originText, segment.destinationText);
+    if (!opened) {
+      const message = "Inserisci Partenza e Arrivo prima di avviare la navigazione";
+      setRideSegmentUiError({ segmentId, message });
+      setError(message);
+      return;
+    }
+
+    setRideSegmentUiError((current) => (current?.segmentId === segmentId ? null : current));
+    setError(null);
+  }
+
   const orderedTrackPoints = useMemo(() => {
     return trackPoints
       .map((trackPoint) => ({
@@ -1257,6 +1307,16 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
                         >
                           {isGeneratingRoute ? "Calcolo..." : "Calcola tratta"}
                         </button>
+                        <button
+                          type="button"
+                          className="buttonPrimary"
+                          onClick={() => handleOpenRideSegmentNavigation(segment.id)}
+                        >
+                          VAI
+                        </button>
+                        <span className="badge" style={{ whiteSpace: "nowrap" }}>
+                          {segment.modeRequested.toUpperCase()}
+                        </span>
                       </div>
 
                       <div style={{ marginTop: "0.55rem", display: "grid", gap: "0.25rem" }}>
