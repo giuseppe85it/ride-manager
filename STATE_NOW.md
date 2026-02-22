@@ -159,6 +159,7 @@ Relazioni:
 - Prenotazioni HOTEL/TRAGHETTO con filtri, ricerca e CRUD.
 - Home: Import GPX rapido BMW one-click con auto-assign a Viaggio/Giorno per data (crea Viaggio/Giorno se mancanti).
 - Tab Giorni: card con azioni top-right (menu "..." + elimina) allineate e cliccabili senza sovrapporsi alla pill stato.
+- UI lista Giorni: card migliorate con "Giorno N", data IT in evidenza e azioni allineate.
 ### PARZIALE
 - Home: voci placeholder parziali (Backup / Export).
 - Dettaglio Viaggio: tab placeholder (Costi, Media).

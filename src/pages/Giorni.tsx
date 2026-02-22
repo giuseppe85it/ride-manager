@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Giorno } from "../models/Giorno";
 import type { Prenotazione } from "../models/Prenotazione";
 import {
@@ -57,6 +57,15 @@ export default function Giorni({ viaggioId, onBack, onOpenGiorno, embedded = fal
   const [menuOpenForDayId, setMenuOpenForDayId] = useState<string | null>(null);
   const [editTitleDay, setEditTitleDay] = useState<Giorno | null>(null);
   const [editTitleValue, setEditTitleValue] = useState("");
+
+  const hotelById = useMemo(
+    () => new Map(hotelOptions.map((hotel) => [hotel.id, hotel] as const)),
+    [hotelOptions],
+  );
+  const giorniSorted = useMemo(
+    () => [...giorni].sort((a, b) => a.data.localeCompare(b.data)),
+    [giorni],
+  );
 
   async function fetchGiorniByViaggio(targetViaggioId: string): Promise<Giorno[]> {
     return getGiorniByViaggio(targetViaggioId);
@@ -278,10 +287,22 @@ export default function Giorni({ viaggioId, onBack, onOpenGiorno, embedded = fal
       {error && <p className="errorText">{error}</p>}
       {giorni.length === 0 && <p className="metaText">Nessun giorno presente.</p>}
 
-      {giorni.length > 0 && (
+      {giorniSorted.length > 0 && (
         <ul className="listPlain cardsGrid">
-          {giorni.map((giorno) => (
-            <li key={giorno.id} className="card detailCard" style={{ position: "relative", padding: "0.25rem" }}>
+          {giorniSorted.map((giorno, index) => {
+            const hotelDelGiorno =
+              giorno.hotelPrenotazioneId ? hotelById.get(giorno.hotelPrenotazioneId) : undefined;
+            return (
+              <li
+                key={giorno.id}
+                className="card detailCard"
+                style={{
+                  position: "relative",
+                  padding: "0.35rem",
+                  borderColor: "#243041",
+                  boxShadow: "inset 0 0 0 1px rgba(31,111,235,0.08)",
+                }}
+              >
               <div
                 onClick={(event) => event.stopPropagation()}
                 onMouseDown={(event) => {
@@ -290,8 +311,8 @@ export default function Giorni({ viaggioId, onBack, onOpenGiorno, embedded = fal
                 }}
                 style={{
                   position: "absolute",
-                  top: "0.45rem",
-                  right: "0.45rem",
+                  top: "0.6rem",
+                  right: "0.6rem",
                   display: "flex",
                   alignItems: "center",
                   gap: 8,
@@ -377,8 +398,8 @@ export default function Giorni({ viaggioId, onBack, onOpenGiorno, embedded = fal
                   }}
                   style={{
                     position: "absolute",
-                    top: "3rem",
-                    right: "0.45rem",
+                    top: "3.15rem",
+                    right: "0.6rem",
                     minWidth: 170,
                     padding: "0.35rem",
                     zIndex: 3,
@@ -406,18 +427,76 @@ export default function Giorni({ viaggioId, onBack, onOpenGiorno, embedded = fal
                 type="button"
                 onClick={() => onOpenGiorno(giorno.id)}
                 className="itemButton"
-                style={{ paddingRight: "6.2rem", paddingTop: "0.45rem" }}
+                style={{
+                  width: "100%",
+                  textAlign: "left",
+                  padding: "0.95rem 6.7rem 0.95rem 0.95rem",
+                  borderRadius: 14,
+                  display: "grid",
+                  gridTemplateColumns: "minmax(120px, 150px) 1fr",
+                  gap: "0.9rem",
+                  alignItems: "start",
+                }}
               >
-                <div style={{ display: "flex", justifyContent: "space-between", gap: "0.8rem", flexWrap: "wrap" }}>
-                  <strong>{formatDate(giorno.data)}</strong>
-                  <span className="badge">{statoGiornoLabel(giorno.stato)}</span>
+                <div style={{ display: "grid", gap: "0.35rem" }}>
+                  <span
+                    className="badge"
+                    style={{
+                      width: "fit-content",
+                      borderColor: "#1F6FEB",
+                      color: "#CFE2FF",
+                      background: "rgba(31,111,235,0.14)",
+                    }}
+                  >
+                    Giorno {index + 1}
+                  </span>
+                  <strong style={{ fontSize: "1.05rem", lineHeight: 1.2 }}>{formatDate(giorno.data)}</strong>
                 </div>
-                <p style={{ margin: "0.55rem 0 0", fontWeight: 600 }}>
-                  {giorno.titolo.trim() ? giorno.titolo : "Senza titolo"}
-                </p>
+                <div style={{ display: "grid", gap: "0.45rem", minWidth: 0 }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "flex-start",
+                      gap: "0.75rem",
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <p
+                      style={{
+                        margin: 0,
+                        fontWeight: 700,
+                        fontSize: "1rem",
+                        letterSpacing: "0.02em",
+                        textTransform: "uppercase",
+                        color: "#FFFFFF",
+                        minWidth: 0,
+                        flex: "1 1 220px",
+                      }}
+                    >
+                      {giorno.titolo.trim() ? giorno.titolo : "SENZA TITOLO"}
+                    </p>
+                    <span
+                      className="badge"
+                      style={{
+                        whiteSpace: "nowrap",
+                        alignSelf: "flex-start",
+                        marginRight: "0.1rem",
+                      }}
+                    >
+                      {statoGiornoLabel(giorno.stato)}
+                    </span>
+                  </div>
+                  {hotelDelGiorno && (
+                    <p className="metaText" style={{ margin: 0 }}>
+                      Hotel: {hotelDelGiorno.titolo}
+                    </p>
+                  )}
+                </div>
               </button>
-            </li>
-          ))}
+              </li>
+            );
+          })}
         </ul>
       )}
 
