@@ -25,6 +25,12 @@ interface GiornoDettaglioProps {
   onBack: () => void;
 }
 
+interface GeocodeSuggestion {
+  displayName: string;
+  lat: number;
+  lon: number;
+}
+
 interface RouteApiSuccessResponse {
   ok: true;
   modeRequested: "direct" | "curvy";
@@ -32,6 +38,8 @@ interface RouteApiSuccessResponse {
   distanceKm: number;
   durationMin: number;
   geometry: Array<{ lat: number; lon: number }>;
+  originResolved: GeocodeSuggestion;
+  destinationResolved: GeocodeSuggestion;
 }
 
 interface RouteApiErrorResponse {
@@ -83,19 +91,6 @@ function formatGapDuration(durationSec: number): string {
   return `${totalMinutes} min`;
 }
 
-function parseCoordinate(value: string, kind: "lat" | "lon"): number | null {
-  const parsed = Number.parseFloat(value);
-  if (!Number.isFinite(parsed)) {
-    return null;
-  }
-
-  if (kind === "lat") {
-    return parsed >= -90 && parsed <= 90 ? parsed : null;
-  }
-
-  return parsed >= -180 && parsed <= 180 ? parsed : null;
-}
-
 function isRouteApiSuccessResponse(value: unknown): value is RouteApiSuccessResponse {
   if (typeof value !== "object" || value === null) {
     return false;
@@ -108,6 +103,8 @@ function isRouteApiSuccessResponse(value: unknown): value is RouteApiSuccessResp
     distanceKm?: unknown;
     durationMin?: unknown;
     geometry?: unknown;
+    originResolved?: unknown;
+    destinationResolved?: unknown;
   };
 
   if (record.ok !== true) {
@@ -154,6 +151,62 @@ function isRouteApiSuccessResponse(value: unknown): value is RouteApiSuccessResp
     }
   }
 
+  for (const endpoint of [record.originResolved, record.destinationResolved]) {
+    if (typeof endpoint !== "object" || endpoint === null) {
+      return false;
+    }
+    const displayName = (endpoint as { displayName?: unknown }).displayName;
+    const lat = (endpoint as { lat?: unknown }).lat;
+    const lon = (endpoint as { lon?: unknown }).lon;
+    if (
+      typeof displayName !== "string" ||
+      !displayName.trim() ||
+      typeof lat !== "number" ||
+      !Number.isFinite(lat) ||
+      lat < -90 ||
+      lat > 90 ||
+      typeof lon !== "number" ||
+      !Number.isFinite(lon) ||
+      lon < -180 ||
+      lon > 180
+    ) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function isGeocodeSuggestionArray(value: unknown): value is GeocodeSuggestion[] {
+  if (!Array.isArray(value)) {
+    return false;
+  }
+
+  for (const item of value) {
+    if (typeof item !== "object" || item === null) {
+      return false;
+    }
+
+    const displayName = (item as { displayName?: unknown }).displayName;
+    const lat = (item as { lat?: unknown }).lat;
+    const lon = (item as { lon?: unknown }).lon;
+
+    if (
+      typeof displayName !== "string" ||
+      !displayName.trim() ||
+      typeof lat !== "number" ||
+      !Number.isFinite(lat) ||
+      lat < -90 ||
+      lat > 90 ||
+      typeof lon !== "number" ||
+      !Number.isFinite(lon) ||
+      lon < -180 ||
+      lon > 180
+    ) {
+      return false;
+    }
+  }
+
   return true;
 }
 
@@ -168,11 +221,13 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
   const [isResolvingLocations, setIsResolvingLocations] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [isGeneratingRoute, setIsGeneratingRoute] = useState(false);
+  const [isSearchingOrigin, setIsSearchingOrigin] = useState(false);
+  const [isSearchingDestination, setIsSearchingDestination] = useState(false);
   const [routeMode, setRouteMode] = useState<"direct" | "curvy">("direct");
-  const [originLat, setOriginLat] = useState("");
-  const [originLon, setOriginLon] = useState("");
-  const [destinationLat, setDestinationLat] = useState("");
-  const [destinationLon, setDestinationLon] = useState("");
+  const [originText, setOriginText] = useState("");
+  const [destinationText, setDestinationText] = useState("");
+  const [originSuggestions, setOriginSuggestions] = useState<GeocodeSuggestion[]>([]);
+  const [destinationSuggestions, setDestinationSuggestions] = useState<GeocodeSuggestion[]>([]);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -236,18 +291,15 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
   }, [giornoId]);
 
   useEffect(() => {
-    const geometry = giorno?.plannedRoute?.geometry;
-    if (!geometry || geometry.length < 2) {
+    if (!giorno) {
       return;
     }
 
-    const firstPoint = geometry[0];
-    const lastPoint = geometry[geometry.length - 1];
-    setOriginLat(firstPoint.lat.toString());
-    setOriginLon(firstPoint.lon.toString());
-    setDestinationLat(lastPoint.lat.toString());
-    setDestinationLon(lastPoint.lon.toString());
-    setRouteMode(giorno.plannedRoute.modeRequested);
+    setOriginText(giorno.plannedOriginText ?? "");
+    setDestinationText(giorno.plannedDestinationText ?? "");
+    if (giorno.plannedRoute) {
+      setRouteMode(giorno.plannedRoute.modeRequested);
+    }
   }, [giorno]);
 
   async function handleImport(event: ChangeEvent<HTMLInputElement>): Promise<void> {
@@ -288,28 +340,100 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
     }
   }
 
+  async function searchGeocode(
+    query: string,
+    target: "origin" | "destination",
+  ): Promise<void> {
+    const trimmed = query.trim();
+    if (!trimmed) {
+      if (target === "origin") {
+        setOriginSuggestions([]);
+      } else {
+        setDestinationSuggestions([]);
+      }
+      return;
+    }
+
+    if (target === "origin") {
+      setIsSearchingOrigin(true);
+    } else {
+      setIsSearchingDestination(true);
+    }
+
+    try {
+      const response = await fetch(`/api/geocode?q=${encodeURIComponent(trimmed)}&limit=5`);
+      const payload = (await response.json()) as unknown;
+
+      if (!response.ok || !isGeocodeSuggestionArray(payload)) {
+        const message =
+          typeof (payload as { error?: unknown })?.error === "string"
+            ? (payload as { error: string }).error
+            : "Errore geocoding";
+        throw new Error(message);
+      }
+
+      if (target === "origin") {
+        setOriginSuggestions(payload.slice(0, 5));
+      } else {
+        setDestinationSuggestions(payload.slice(0, 5));
+      }
+      setError(null);
+    } catch (geocodeError) {
+      if (target === "origin") {
+        setOriginSuggestions([]);
+      } else {
+        setDestinationSuggestions([]);
+      }
+      const message = geocodeError instanceof Error ? geocodeError.message : "Errore geocoding";
+      setError(message);
+    } finally {
+      if (target === "origin") {
+        setIsSearchingOrigin(false);
+      } else {
+        setIsSearchingDestination(false);
+      }
+    }
+  }
+
+  function selectOriginSuggestion(suggestion: GeocodeSuggestion): void {
+    setOriginText(suggestion.displayName);
+    setOriginSuggestions([]);
+  }
+
+  function selectDestinationSuggestion(suggestion: GeocodeSuggestion): void {
+    setDestinationText(suggestion.displayName);
+    setDestinationSuggestions([]);
+  }
+
+  function handleUseHotelForDestination(): void {
+    if (!hotelPrenotazione) {
+      return;
+    }
+
+    const candidate = [
+      hotelPrenotazione.indirizzo,
+      hotelPrenotazione.localita,
+      hotelPrenotazione.titolo,
+    ].find((value): value is string => typeof value === "string" && value.trim().length > 0);
+
+    if (!candidate) {
+      return;
+    }
+
+    setDestinationText(candidate.trim());
+    setDestinationSuggestions([]);
+  }
+
   async function handleGeneratePlannedRoute(): Promise<void> {
     if (!giorno) {
       setError("Dati giorno non disponibili.");
       return;
     }
 
-    const origin = {
-      lat: parseCoordinate(originLat, "lat"),
-      lon: parseCoordinate(originLon, "lon"),
-    };
-    const destination = {
-      lat: parseCoordinate(destinationLat, "lat"),
-      lon: parseCoordinate(destinationLon, "lon"),
-    };
-
-    if (
-      origin.lat === null ||
-      origin.lon === null ||
-      destination.lat === null ||
-      destination.lon === null
-    ) {
-      setError("Inserisci coordinate valide per origine e destinazione.");
+    const originTextTrimmed = originText.trim();
+    const destinationTextTrimmed = destinationText.trim();
+    if (!originTextTrimmed || !destinationTextTrimmed) {
+      setError("Inserisci partenza e arrivo.");
       return;
     }
 
@@ -323,8 +447,8 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          origin: { lat: origin.lat, lon: origin.lon },
-          destination: { lat: destination.lat, lon: destination.lon },
+          originText: originTextTrimmed,
+          destinationText: destinationTextTrimmed,
           mode: routeMode,
         }),
       });
@@ -341,6 +465,8 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
 
       const nextGiorno: Giorno = {
         ...giorno,
+        plannedOriginText: payload.originResolved.displayName,
+        plannedDestinationText: payload.destinationResolved.displayName,
         plannedRoute: {
           engine: "osrm",
           modeRequested: payload.modeRequested,
@@ -354,6 +480,10 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
 
       await saveGiorno(nextGiorno);
       setGiorno(nextGiorno);
+      setOriginText(payload.originResolved.displayName);
+      setDestinationText(payload.destinationResolved.displayName);
+      setOriginSuggestions([]);
+      setDestinationSuggestions([]);
     } catch (routeError) {
       const message =
         routeError instanceof Error ? routeError.message : "Errore generazione route";
@@ -479,6 +609,11 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
         (value) => typeof value === "string" && value.trim().length > 0,
       ),
   );
+  const hotelDestinationCandidate =
+    [hotelPrenotazione?.indirizzo, hotelPrenotazione?.localita, hotelPrenotazione?.titolo].find(
+      (value): value is string => typeof value === "string" && value.trim().length > 0,
+    ) ?? null;
+  const canUseHotelForDestination = Boolean(hotelDestinationCandidate);
 
   return (
     <main className="pageWrap">
@@ -493,44 +628,100 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
         <div className="card detailCard" style={{ marginBottom: "1rem" }}>
           <h2 style={{ margin: "0 0 0.6rem 0" }}>Pianificazione</h2>
           <p className="metaText" style={{ margin: "0 0 0.6rem 0" }}>
-            Routing locale OSRM (test con coordinate manuali).
+            Routing locale OSRM con geocoding Nominatim (input testo).
           </p>
           <div
             style={{
               display: "grid",
-              gap: "0.55rem",
-              gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
+              gap: "0.75rem",
+              gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
               marginBottom: "0.7rem",
             }}
           >
-            <input
-              type="number"
-              className="inputField"
-              value={originLat}
-              onChange={(event) => setOriginLat(event.target.value)}
-              placeholder="Origine lat"
-            />
-            <input
-              type="number"
-              className="inputField"
-              value={originLon}
-              onChange={(event) => setOriginLon(event.target.value)}
-              placeholder="Origine lon"
-            />
-            <input
-              type="number"
-              className="inputField"
-              value={destinationLat}
-              onChange={(event) => setDestinationLat(event.target.value)}
-              placeholder="Destinazione lat"
-            />
-            <input
-              type="number"
-              className="inputField"
-              value={destinationLon}
-              onChange={(event) => setDestinationLon(event.target.value)}
-              placeholder="Destinazione lon"
-            />
+            <div style={{ display: "grid", gap: "0.5rem", alignContent: "start" }}>
+              <label style={{ fontWeight: 600 }}>Partenza</label>
+              <div style={{ display: "flex", gap: "0.5rem" }}>
+                <input
+                  type="text"
+                  className="inputField"
+                  value={originText}
+                  onChange={(event) => setOriginText(event.target.value)}
+                  placeholder='Es. "Bastia" o indirizzo'
+                  style={{ flex: 1 }}
+                />
+                <button
+                  type="button"
+                  className="buttonGhost"
+                  onClick={() => void searchGeocode(originText, "origin")}
+                  disabled={isSearchingOrigin || !originText.trim()}
+                >
+                  {isSearchingOrigin ? "..." : "Cerca"}
+                </button>
+              </div>
+              {originSuggestions.length > 0 && (
+                <ul className="listPlain card" style={{ padding: "0.4rem", margin: 0 }}>
+                  {originSuggestions.map((suggestion, index) => (
+                    <li key={`${suggestion.displayName}-${index}`}>
+                      <button
+                        type="button"
+                        className="itemButton"
+                        onClick={() => selectOriginSuggestion(suggestion)}
+                      >
+                        {suggestion.displayName}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <div style={{ display: "grid", gap: "0.5rem", alignContent: "start" }}>
+              <label style={{ fontWeight: 600 }}>Arrivo</label>
+              <div style={{ display: "flex", gap: "0.5rem" }}>
+                <input
+                  type="text"
+                  className="inputField"
+                  value={destinationText}
+                  onChange={(event) => setDestinationText(event.target.value)}
+                  placeholder='Es. "Saint-Florent" o indirizzo'
+                  style={{ flex: 1 }}
+                />
+                <button
+                  type="button"
+                  className="buttonGhost"
+                  onClick={() => void searchGeocode(destinationText, "destination")}
+                  disabled={isSearchingDestination || !destinationText.trim()}
+                >
+                  {isSearchingDestination ? "..." : "Cerca"}
+                </button>
+              </div>
+              {destinationSuggestions.length > 0 && (
+                <ul className="listPlain card" style={{ padding: "0.4rem", margin: 0 }}>
+                  {destinationSuggestions.map((suggestion, index) => (
+                    <li key={`${suggestion.displayName}-${index}`}>
+                      <button
+                        type="button"
+                        className="itemButton"
+                        onClick={() => selectDestinationSuggestion(suggestion)}
+                      >
+                        {suggestion.displayName}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <div>
+                <button
+                  type="button"
+                  className="buttonGhost"
+                  onClick={handleUseHotelForDestination}
+                  disabled={!canUseHotelForDestination}
+                >
+                  Usa Hotel del giorno
+                </button>
+              </div>
+            </div>
+
             <select
               className="inputField"
               value={routeMode}
@@ -552,6 +743,12 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
           {giorno?.plannedRoute && (
             <>
               <div style={{ marginTop: "0.75rem", marginBottom: "0.6rem" }}>
+                <p className="metaText" style={{ margin: "0 0 0.25rem 0" }}>
+                  Partenza: {giorno.plannedOriginText ?? "—"}
+                </p>
+                <p className="metaText" style={{ margin: "0 0 0.25rem 0" }}>
+                  Arrivo: {giorno.plannedDestinationText ?? "—"}
+                </p>
                 <p className="metaText" style={{ margin: "0 0 0.25rem 0" }}>
                   Mode richiesto: {giorno.plannedRoute.modeRequested}
                 </p>

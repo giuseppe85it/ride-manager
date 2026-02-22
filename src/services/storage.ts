@@ -250,6 +250,8 @@ function normalizeGiorno(record: LegacyGiornoRecord): Giorno {
     note: typeof record.note === "string" ? record.note : undefined,
     hotelPrenotazioneId: toOptionalString(record.hotelPrenotazioneId),
     plannedMapsUrl: toOptionalString(record.plannedMapsUrl),
+    plannedOriginText: toOptionalString(record.plannedOriginText),
+    plannedDestinationText: toOptionalString(record.plannedDestinationText),
     plannedRoute: normalizePlannedRoute(record.plannedRoute),
     createdAt:
       typeof record.createdAt === "string" && record.createdAt

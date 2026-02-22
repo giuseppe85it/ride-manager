@@ -1,5 +1,5 @@
 # STATE_NOW - RideManager (Gestione Viaggi Moto)
-Data aggiornamento: 21 02 2026
+Data aggiornamento: 22 02 2026
 
 ## Stack e vincoli
 - Stack: React + Vite + TypeScript, mappa Leaflet/React-Leaflet, persistenza locale IndexedDB.
@@ -26,6 +26,8 @@ Data aggiornamento: 21 02 2026
 - `note?: string`
 - `hotelPrenotazioneId?: string`
 - `plannedMapsUrl?: string`
+- `plannedOriginText?: string`
+- `plannedDestinationText?: string`
 - `plannedRoute?: PlannedRoute`
 - `createdAt: string`
 ### GPXFile (`src/models/GPXFile.ts`)

@@ -22,6 +22,8 @@ export interface Giorno {
   note?: string;
   hotelPrenotazioneId?: string;
   plannedMapsUrl?: string;
+  plannedOriginText?: string;
+  plannedDestinationText?: string;
   plannedRoute?: PlannedRoute;
   createdAt: string;
 }
