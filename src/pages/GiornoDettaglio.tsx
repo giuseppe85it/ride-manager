@@ -2,8 +2,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
 import type {
   DayPlan,
-  DayPlanComputed,
-  DayPlanSegment,
   FerrySegment,
   Giorno,
   RideSegment,
@@ -21,6 +19,7 @@ import {
   deleteTrackPointsByGpxFileId,
   getGiorno,
   getGPXFilesByGiorno,
+  getPrenotazioniByViaggio,
   getPrenotazione,
   getTrackPointsByGiorno,
   saveGiorno,
@@ -113,132 +112,6 @@ function generatePlanSegmentId(prefix = "segment"): string {
   }
 
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
-}
-
-function isValidHHMM(value: string | undefined): value is string {
-  if (!value) {
-    return false;
-  }
-
-  const match = /^(\d{2}):(\d{2})$/.exec(value);
-  if (!match) {
-    return false;
-  }
-
-  const hours = Number.parseInt(match[1], 10);
-  const minutes = Number.parseInt(match[2], 10);
-  return hours >= 0 && hours <= 23 && minutes >= 0 && minutes <= 59;
-}
-
-function parseHHMMToMinutes(value: string | undefined): number | undefined {
-  if (!isValidHHMM(value)) {
-    return undefined;
-  }
-
-  const [hours, minutes] = value.split(":").map((part) => Number.parseInt(part, 10));
-  return hours * 60 + minutes;
-}
-
-function formatMinutesToHHMM(value: number | undefined): string | undefined {
-  if (typeof value !== "number" || !Number.isFinite(value)) {
-    return undefined;
-  }
-
-  const normalized = ((Math.round(value) % 1440) + 1440) % 1440;
-  const hours = Math.floor(normalized / 60)
-    .toString()
-    .padStart(2, "0");
-  const minutes = (normalized % 60).toString().padStart(2, "0");
-  return `${hours}:${minutes}`;
-}
-
-function getRideDurationMin(segment: RideSegment): number | undefined {
-  if (typeof segment.durationMin !== "number" || !Number.isFinite(segment.durationMin) || segment.durationMin < 0) {
-    return undefined;
-  }
-
-  return Math.round(segment.durationMin);
-}
-
-function computeDayPlan(dayPlan: DayPlan): DayPlanComputed {
-  const segmentTimes: Record<string, { start?: string; end?: string }> = {};
-  const ferryIndex = dayPlan.segments.findIndex((segment) => segment.type === "FERRY");
-
-  if (ferryIndex < 0) {
-    return {};
-  }
-
-  const ferrySegment = dayPlan.segments[ferryIndex];
-  if (ferrySegment.type !== "FERRY") {
-    return {};
-  }
-
-  const departMinutes = parseHHMMToMinutes(ferrySegment.departTimeLocal);
-  const arriveMinutes = parseHHMMToMinutes(ferrySegment.arriveTimeLocal);
-  const targetArrivePortMinutes =
-    departMinutes !== undefined ? departMinutes - Math.max(0, Math.round(dayPlan.boardingBufferMin)) : undefined;
-
-  if (departMinutes !== undefined || arriveMinutes !== undefined) {
-    segmentTimes[ferrySegment.id] = {
-      start: formatMinutesToHHMM(departMinutes),
-      end: formatMinutesToHHMM(arriveMinutes),
-    };
-  }
-
-  let recommendedStartTimeLocal: string | undefined;
-  let estimatedEndTimeLocal: string | undefined;
-
-  if (targetArrivePortMinutes !== undefined) {
-    let cursorEnd = targetArrivePortMinutes;
-    for (let index = ferryIndex - 1; index >= 0; index -= 1) {
-      const segment = dayPlan.segments[index];
-      if (segment.type !== "RIDE") {
-        continue;
-      }
-
-      const durationMin = getRideDurationMin(segment);
-      if (durationMin === undefined) {
-        break;
-      }
-
-      const segmentStart = cursorEnd - durationMin;
-      segmentTimes[segment.id] = {
-        start: formatMinutesToHHMM(segmentStart),
-        end: formatMinutesToHHMM(cursorEnd),
-      };
-      cursorEnd = segmentStart;
-      recommendedStartTimeLocal = formatMinutesToHHMM(segmentStart);
-    }
-  }
-
-  if (arriveMinutes !== undefined) {
-    let cursorStart = arriveMinutes;
-    for (let index = ferryIndex + 1; index < dayPlan.segments.length; index += 1) {
-      const segment = dayPlan.segments[index];
-      if (segment.type !== "RIDE") {
-        continue;
-      }
-
-      const durationMin = getRideDurationMin(segment);
-      if (durationMin === undefined) {
-        break;
-      }
-
-      const segmentEnd = cursorStart + durationMin;
-      segmentTimes[segment.id] = {
-        start: formatMinutesToHHMM(cursorStart),
-        end: formatMinutesToHHMM(segmentEnd),
-      };
-      cursorStart = segmentEnd;
-      estimatedEndTimeLocal = formatMinutesToHHMM(segmentEnd);
-    }
-  }
-
-  return {
-    recommendedStartTimeLocal,
-    estimatedEndTimeLocal,
-    segmentTimes: Object.keys(segmentTimes).length > 0 ? segmentTimes : undefined,
-  };
 }
 
 function createEmptyDayPlan(): DayPlan {
@@ -373,6 +246,7 @@ function isGeocodeSuggestionArray(value: unknown): value is GeocodeSuggestion[] 
 export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioProps) {
   const [giorno, setGiorno] = useState<Giorno | null>(null);
   const [hotelPrenotazione, setHotelPrenotazione] = useState<Prenotazione | null>(null);
+  const [ferryPrenotazioni, setFerryPrenotazioni] = useState<Prenotazione[]>([]);
   const [gpxFiles, setGpxFiles] = useState<GPXFile[]>([]);
   const [trackPoints, setTrackPoints] = useState<TrackPoint[]>([]);
   const [showAllGaps, setShowAllGaps] = useState(false);
@@ -400,12 +274,19 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
     ]);
 
     let hotelRecord: Prenotazione | null = null;
+    let ferryRecords: Prenotazione[] = [];
     if (giornoRecord?.hotelPrenotazioneId) {
       hotelRecord = (await getPrenotazione(giornoRecord.hotelPrenotazioneId)) ?? null;
+    }
+    if (giornoRecord?.viaggioId) {
+      ferryRecords = (await getPrenotazioniByViaggio(giornoRecord.viaggioId)).filter(
+        (prenotazione) => prenotazione.tipo === "TRAGHETTO",
+      );
     }
 
     setGiorno(giornoRecord ?? null);
     setHotelPrenotazione(hotelRecord);
+    setFerryPrenotazioni(ferryRecords);
     setGpxFiles(gpxRecords);
     setTrackPoints(pointRecords);
   }
@@ -424,14 +305,24 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
           return;
         }
         let hotelRecord: Prenotazione | null = null;
+        let ferryRecords: Prenotazione[] = [];
         if (giornoRecord?.hotelPrenotazioneId) {
           hotelRecord = (await getPrenotazione(giornoRecord.hotelPrenotazioneId)) ?? null;
           if (!isActive) {
             return;
           }
         }
+        if (giornoRecord?.viaggioId) {
+          ferryRecords = (await getPrenotazioniByViaggio(giornoRecord.viaggioId)).filter(
+            (prenotazione) => prenotazione.tipo === "TRAGHETTO",
+          );
+          if (!isActive) {
+            return;
+          }
+        }
         setGiorno(giornoRecord ?? null);
         setHotelPrenotazione(hotelRecord);
+        setFerryPrenotazioni(ferryRecords);
         setGpxFiles(gpxRecords);
         setTrackPoints(pointRecords);
         setError(null);
@@ -680,23 +571,14 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
       : createEmptyDayPlan();
   }
 
-  async function saveDayPlan(nextDayPlan: DayPlan, nextComputed?: DayPlanComputed): Promise<void> {
+  async function saveDayPlan(nextDayPlan: DayPlan): Promise<void> {
     if (!giorno) {
       return;
     }
 
-    const normalizedComputed =
-      nextComputed &&
-      (nextComputed.recommendedStartTimeLocal ||
-        nextComputed.estimatedEndTimeLocal ||
-        (nextComputed.segmentTimes && Object.keys(nextComputed.segmentTimes).length > 0))
-        ? nextComputed
-        : undefined;
-
     const nextGiorno: Giorno = {
       ...giorno,
       dayPlan: nextDayPlan,
-      dayPlanComputed: normalizedComputed,
     };
 
     await persistGiorno(nextGiorno);
@@ -704,7 +586,6 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
 
   async function updateDayPlan(
     updater: (currentDayPlan: DayPlan) => DayPlan,
-    options?: { recompute?: boolean },
   ): Promise<void> {
     const currentDayPlan = buildDayPlanFromCurrent();
     const nextDayPlanBase = updater(currentDayPlan);
@@ -712,8 +593,7 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
       ...nextDayPlanBase,
       updatedAt: new Date().toISOString(),
     };
-    const nextComputed = options?.recompute ? computeDayPlan(nextDayPlan) : giorno?.dayPlanComputed;
-    await saveDayPlan(nextDayPlan, nextComputed);
+    await saveDayPlan(nextDayPlan);
   }
 
   async function handleAddRideSegment(): Promise<void> {
@@ -746,26 +626,20 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
   }
 
   async function handleDeletePlanSegment(segmentId: string): Promise<void> {
-    await updateDayPlan(
-      (currentDayPlan) => ({
-        ...currentDayPlan,
-        segments: currentDayPlan.segments.filter((segment) => segment.id !== segmentId),
-      }),
-      { recompute: true },
-    );
+    await updateDayPlan((currentDayPlan) => ({
+      ...currentDayPlan,
+      segments: currentDayPlan.segments.filter((segment) => segment.id !== segmentId),
+    }));
     setPlannerSearch((current) => (current?.segmentId === segmentId ? null : current));
   }
 
   async function handleBoardingBufferChange(value: string): Promise<void> {
     const parsed = Number.parseInt(value, 10);
     const safeValue = Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
-    await updateDayPlan(
-      (currentDayPlan) => ({
-        ...currentDayPlan,
-        boardingBufferMin: safeValue,
-      }),
-      { recompute: true },
-    );
+    await updateDayPlan((currentDayPlan) => ({
+      ...currentDayPlan,
+      boardingBufferMin: safeValue,
+    }));
   }
 
   async function handleRideSegmentFieldChange(
@@ -807,24 +681,21 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
     segmentId: string,
     field: keyof Pick<
       FerrySegment,
-      "departPortText" | "arrivePortText" | "departTimeLocal" | "arriveTimeLocal" | "company" | "note"
+      "prenotazioneId" | "departPortText" | "arrivePortText" | "company" | "note"
     >,
     value: string,
   ): Promise<void> {
-    await updateDayPlan(
-      (currentDayPlan) => ({
-        ...currentDayPlan,
-        segments: currentDayPlan.segments.map((segment) =>
-          segment.id !== segmentId || segment.type !== "FERRY"
-            ? segment
-            : {
-                ...segment,
-                [field]: value.trim() ? value : undefined,
-              },
-        ),
-      }),
-      { recompute: field === "departTimeLocal" || field === "arriveTimeLocal" },
-    );
+    await updateDayPlan((currentDayPlan) => ({
+      ...currentDayPlan,
+      segments: currentDayPlan.segments.map((segment) =>
+        segment.id !== segmentId || segment.type !== "FERRY"
+          ? segment
+          : {
+              ...segment,
+              [field]: value.trim() ? value : undefined,
+            },
+      ),
+    }));
   }
 
   async function handlePlannerSearch(
@@ -963,8 +834,7 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
         ),
       };
 
-      const nextComputed = computeDayPlan(nextDayPlan);
-      await saveDayPlan(nextDayPlan, nextComputed);
+      await saveDayPlan(nextDayPlan);
       setPlannerSearch(null);
     } catch (routeError) {
       const message = routeError instanceof Error ? routeError.message : "Errore calcolo tratta";
@@ -972,23 +842,6 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
     } finally {
       setIsGeneratingRoute(false);
     }
-  }
-
-  async function handleRecalculateDayPlanTimes(): Promise<void> {
-    const currentDayPlan = giorno?.dayPlan;
-    if (!currentDayPlan) {
-      setError("Planner giorno non presente.");
-      return;
-    }
-
-    const computed = computeDayPlan(currentDayPlan);
-    await saveDayPlan(
-      {
-        ...currentDayPlan,
-        updatedAt: new Date().toISOString(),
-      },
-      computed,
-    );
   }
 
   const orderedTrackPoints = useMemo(() => {
@@ -1113,8 +966,13 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
     ) ?? null;
   const canUseHotelForDestination = Boolean(hotelDestinationCandidate);
   const dayPlan = giorno?.dayPlan;
-  const dayPlanComputed = giorno?.dayPlanComputed;
-  const dayPlanSegmentTimes = dayPlanComputed?.segmentTimes;
+  const ferryPrenotazioniById = useMemo(
+    () =>
+      new Map(
+        ferryPrenotazioni.map((prenotazione) => [prenotazione.id, prenotazione] as const),
+      ),
+    [ferryPrenotazioni],
+  );
   const dayPlanRideSegmentsForMap = useMemo(
     () =>
       (dayPlan?.segments ?? [])
@@ -1169,31 +1027,6 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
             <button type="button" className="buttonGhost" onClick={() => void handleAddFerrySegment()}>
               + Traghetto
             </button>
-            <button
-              type="button"
-              className="buttonGhost"
-              onClick={() => void handleRecalculateDayPlanTimes()}
-              disabled={!dayPlan}
-            >
-              Ricalcola orari
-            </button>
-          </div>
-
-          <div
-            className="card"
-            style={{
-              padding: "0.7rem",
-              marginBottom: "0.75rem",
-              display: "grid",
-              gap: "0.3rem",
-            }}
-          >
-            <p className="metaText" style={{ margin: 0 }}>
-              Partenza consigliata: {dayPlanComputed?.recommendedStartTimeLocal ?? "\u2014"}
-            </p>
-            <p className="metaText" style={{ margin: 0 }}>
-              Arrivo stimato hotel: {dayPlanComputed?.estimatedEndTimeLocal ?? "\u2014"}
-            </p>
           </div>
 
           {!dayPlan || dayPlan.segments.length === 0 ? (
@@ -1203,7 +1036,6 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
           ) : (
             <div style={{ display: "grid", gap: "0.75rem", marginBottom: "0.75rem" }}>
               {dayPlan.segments.map((segment, index) => {
-                const computedTimes = dayPlanSegmentTimes?.[segment.id];
                 const showSearchOrigin =
                   plannerSearch?.segmentId === segment.id &&
                   plannerSearch.field === "originText" &&
@@ -1214,9 +1046,6 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
                   plannerSearch.suggestions.length > 0;
 
                 if (segment.type === "RIDE") {
-                  const rideStart = computedTimes?.start ?? "\u2014";
-                  const rideEnd = computedTimes?.end ?? "\u2014";
-                  const rideTimeRange = `${rideStart} \u2192 ${rideEnd}`;
                   return (
                     <div key={segment.id} className="card detailCard" style={{ padding: "0.75rem" }}>
                       <div
@@ -1358,7 +1187,7 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
                               onClick={() => void handleUseHotelDestinationForSegment(segment.id)}
                               disabled={!canUseHotelForDestination}
                             >
-                              Usa Hotel del giorno
+                              {canUseHotelForDestination ? "Usa Hotel del giorno" : "Seleziona Hotel del giorno"}
                             </button>
                           </div>
                         </div>
@@ -1409,17 +1238,15 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
                         <p className="metaText" style={{ margin: 0 }}>
                           Mode applicato: {segment.modeApplied ?? "\u2014"}
                         </p>
-                        <p className="metaText" style={{ margin: 0 }}>
-                          Orario stimato: {rideTimeRange}
-                        </p>
                       </div>
                     </div>
                   );
                 }
 
-                const ferryStart = computedTimes?.start ?? segment.departTimeLocal ?? "\u2014";
-                const ferryEnd = computedTimes?.end ?? segment.arriveTimeLocal ?? "\u2014";
-                const ferryTimeRange = `${ferryStart} \u2192 ${ferryEnd}`;
+                const ferryBooking = segment.prenotazioneId
+                  ? (ferryPrenotazioniById.get(segment.prenotazioneId) ?? null)
+                  : null;
+                const ferryHasTimes = Boolean(ferryBooking?.oraInizio && ferryBooking?.oraFine);
                 return (
                   <div key={segment.id} className="card detailCard" style={{ padding: "0.75rem" }}>
                     <div
@@ -1454,22 +1281,21 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
                         gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
                       }}
                     >
-                      <input
-                        type="time"
+                      <select
                         className="inputField"
-                        value={segment.departTimeLocal ?? ""}
+                        value={segment.prenotazioneId ?? ""}
                         onChange={(event) =>
-                          void handleFerrySegmentFieldChange(segment.id, "departTimeLocal", event.target.value)
+                          void handleFerrySegmentFieldChange(segment.id, "prenotazioneId", event.target.value)
                         }
-                      />
-                      <input
-                        type="time"
-                        className="inputField"
-                        value={segment.arriveTimeLocal ?? ""}
-                        onChange={(event) =>
-                          void handleFerrySegmentFieldChange(segment.id, "arriveTimeLocal", event.target.value)
-                        }
-                      />
+                      >
+                        <option value="">Traghetto (prenotazione)</option>
+                        {ferryPrenotazioni.map((prenotazione) => (
+                          <option key={prenotazione.id} value={prenotazione.id}>
+                            {prenotazione.titolo}
+                            {prenotazione.localita ? ` - ${prenotazione.localita}` : ""}
+                          </option>
+                        ))}
+                      </select>
                       <input
                         type="text"
                         className="inputField"
@@ -1508,9 +1334,36 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
                       />
                     </div>
 
-                    <p className="metaText" style={{ margin: "0.55rem 0 0 0" }}>
-                      Orario stimato: {ferryTimeRange}
-                    </p>
+                    <div style={{ marginTop: "0.55rem", display: "grid", gap: "0.25rem" }}>
+                      <p className="metaText" style={{ margin: 0 }}>
+                        Prenotazione: {ferryBooking?.titolo ?? "\u2014"}
+                      </p>
+                      <p className="metaText" style={{ margin: 0 }}>
+                        Data: {ferryBooking?.dataInizio ? formatDateIT(ferryBooking.dataInizio) : "\u2014"}
+                      </p>
+                      <p className="metaText" style={{ margin: 0 }}>
+                        Ora partenza: {ferryBooking?.oraInizio ?? "\u2014"}
+                      </p>
+                      <p className="metaText" style={{ margin: 0 }}>
+                        Ora arrivo: {ferryBooking?.oraFine ?? "\u2014"}
+                      </p>
+                      {(ferryBooking?.portoPartenza || ferryBooking?.portoArrivo) && (
+                        <p className="metaText" style={{ margin: 0 }}>
+                          Porto: {ferryBooking?.portoPartenza ?? "\u2014"} {"\u2192"}{" "}
+                          {ferryBooking?.portoArrivo ?? "\u2014"}
+                        </p>
+                      )}
+                      {segment.prenotazioneId && ferryBooking && !ferryHasTimes && (
+                        <p className="errorText" style={{ margin: 0 }}>
+                          Mancano orari nella prenotazione traghetto
+                        </p>
+                      )}
+                      {segment.prenotazioneId && !ferryBooking && (
+                        <p className="errorText" style={{ margin: 0 }}>
+                          Prenotazione traghetto non trovata
+                        </p>
+                      )}
+                    </div>
                   </div>
                 );
               })}

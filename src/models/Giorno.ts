@@ -28,10 +28,9 @@ export interface RideSegment {
 export interface FerrySegment {
   id: string;
   type: "FERRY";
+  prenotazioneId?: string;
   departPortText?: string;
   arrivePortText?: string;
-  departTimeLocal?: string;
-  arriveTimeLocal?: string;
   company?: string;
   note?: string;
 }
@@ -43,12 +42,6 @@ export interface DayPlan {
   boardingBufferMin: number;
   createdAt: string;
   updatedAt: string;
-}
-
-export interface DayPlanComputed {
-  recommendedStartTimeLocal?: string;
-  estimatedEndTimeLocal?: string;
-  segmentTimes?: Record<string, { start?: string; end?: string }>;
 }
 
 export interface Giorno {
@@ -64,6 +57,5 @@ export interface Giorno {
   plannedDestinationText?: string;
   plannedRoute?: PlannedRoute;
   dayPlan?: DayPlan;
-  dayPlanComputed?: DayPlanComputed;
   createdAt: string;
 }

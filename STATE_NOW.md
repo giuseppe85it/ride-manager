@@ -30,7 +30,6 @@ Data aggiornamento: 22 02 2026
 - `plannedDestinationText?: string`
 - `plannedRoute?: PlannedRoute`
 - `dayPlan?: DayPlan`
-- `dayPlanComputed?: DayPlanComputed`
 - `createdAt: string`
 ### GPXFile (`src/models/GPXFile.ts`)
 - `id: string`

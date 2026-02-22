@@ -212,21 +212,6 @@ function normalizePlannedRoute(value: unknown): Giorno["plannedRoute"] | undefin
   };
 }
 
-function isValidTimeHHMM(value: unknown): value is string {
-  if (typeof value !== "string") {
-    return false;
-  }
-
-  const match = /^(\d{2}):(\d{2})$/.exec(value);
-  if (!match) {
-    return false;
-  }
-
-  const hours = Number.parseInt(match[1], 10);
-  const minutes = Number.parseInt(match[2], 10);
-  return hours >= 0 && hours <= 23 && minutes >= 0 && minutes <= 59;
-}
-
 function normalizeDayPlanSegment(value: unknown): Giorno["dayPlan"] extends { segments: infer T }
   ? T extends Array<infer S>
     ? S | null
@@ -289,10 +274,9 @@ function normalizeDayPlanSegment(value: unknown): Giorno["dayPlan"] extends { se
     return {
       id,
       type: "FERRY",
+      prenotazioneId: toOptionalString(record.prenotazioneId),
       departPortText: toOptionalString(record.departPortText),
       arrivePortText: toOptionalString(record.arrivePortText),
-      departTimeLocal: isValidTimeHHMM(record.departTimeLocal) ? record.departTimeLocal : undefined,
-      arriveTimeLocal: isValidTimeHHMM(record.arriveTimeLocal) ? record.arriveTimeLocal : undefined,
       company: toOptionalString(record.company),
       note: toOptionalString(record.note),
     };
@@ -324,52 +308,6 @@ function normalizeDayPlan(value: unknown): Giorno["dayPlan"] | undefined {
     boardingBufferMin,
     createdAt: toValidIso(record.createdAt) ?? nowIso,
     updatedAt: toValidIso(record.updatedAt) ?? nowIso,
-  };
-}
-
-function normalizeDayPlanComputed(value: unknown): Giorno["dayPlanComputed"] | undefined {
-  if (typeof value !== "object" || value === null) {
-    return undefined;
-  }
-
-  const record = value as Record<string, unknown>;
-  const recommendedStartTimeLocal = isValidTimeHHMM(record.recommendedStartTimeLocal)
-    ? record.recommendedStartTimeLocal
-    : undefined;
-  const estimatedEndTimeLocal = isValidTimeHHMM(record.estimatedEndTimeLocal)
-    ? record.estimatedEndTimeLocal
-    : undefined;
-
-  let segmentTimes: Record<string, { start?: string; end?: string }> | undefined;
-  if (typeof record.segmentTimes === "object" && record.segmentTimes !== null) {
-    segmentTimes = {};
-    for (const [segmentId, timeValue] of Object.entries(record.segmentTimes as Record<string, unknown>)) {
-      if (typeof timeValue !== "object" || timeValue === null) {
-        continue;
-      }
-      const start = isValidTimeHHMM((timeValue as Record<string, unknown>).start)
-        ? ((timeValue as Record<string, unknown>).start as string)
-        : undefined;
-      const end = isValidTimeHHMM((timeValue as Record<string, unknown>).end)
-        ? ((timeValue as Record<string, unknown>).end as string)
-        : undefined;
-      if (start || end) {
-        segmentTimes[segmentId] = { start, end };
-      }
-    }
-    if (Object.keys(segmentTimes).length === 0) {
-      segmentTimes = undefined;
-    }
-  }
-
-  if (!recommendedStartTimeLocal && !estimatedEndTimeLocal && !segmentTimes) {
-    return undefined;
-  }
-
-  return {
-    recommendedStartTimeLocal,
-    estimatedEndTimeLocal,
-    segmentTimes,
   };
 }
 
@@ -415,7 +353,6 @@ function normalizeGiorno(record: LegacyGiornoRecord): Giorno {
     plannedDestinationText: toOptionalString(record.plannedDestinationText),
     plannedRoute: normalizePlannedRoute(record.plannedRoute),
     dayPlan: normalizeDayPlan(record.dayPlan),
-    dayPlanComputed: normalizeDayPlanComputed(record.dayPlanComputed),
     createdAt:
       typeof record.createdAt === "string" && record.createdAt
         ? record.createdAt
