@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
 import type { ImpostazioniApp } from "../models/ImpostazioniApp";
+import { cloudBackupAll } from "../services/cloudBackup";
 import { importBmwGpxAndAutoAssign } from "../services/gpxService";
 import { exportBackupJSON, getImpostazioniApp, restoreFromBackupJSON } from "../services/storage";
+import CloudBackupButton from "../components/CloudBackupButton";
+import SyncStatus from "../components/SyncStatus";
 import ImpostazioniModal from "./ImpostazioniModal";
 import "./Home.css";
 
@@ -126,7 +129,14 @@ export default function Home({ onOpenViaggi }: HomeProps) {
 
       setIsBackupBusy(true);
       await restoreFromBackupJSON(parsed as Parameters<typeof restoreFromBackupJSON>[0]);
-      window.alert("Ripristino completato. La pagina verra' ricaricata.");
+      const cloudSyncResult = await cloudBackupAll();
+      if (cloudSyncResult.ok) {
+        const skippedCostiSuffix =
+          cloudSyncResult.costiSkipped > 0 ? `, costi skipped: ${cloudSyncResult.costiSkipped}` : "";
+        window.alert(`Ripristino completato + sync cloud ok (${cloudSyncResult.viaggi} viaggi, ${cloudSyncResult.giorni} giorni, ${cloudSyncResult.costi} costi, ${cloudSyncResult.prenotazioni} prenotazioni${skippedCostiSuffix}). La pagina verra' ricaricata.`);
+      } else {
+        window.alert(`Import ok, cloud sync fallito: ${cloudSyncResult.error}. La pagina verra' ricaricata.`);
+      }
       window.location.reload();
     } catch (error) {
       const message = error instanceof Error ? error.message : "Errore ripristino backup";
@@ -176,27 +186,42 @@ export default function Home({ onOpenViaggi }: HomeProps) {
               </p>
             </button>
 
-            <div className="home-card" role="group" aria-label="Backup e ripristino">
-              <h2>Backup / Export</h2>
-              <p>Esporta e ripristina dati locali (JSON)</p>
-              <div style={{ display: "flex", gap: "0.45rem", flexWrap: "wrap", marginTop: "0.35rem" }}>
-                <button
-                  type="button"
-                  className="buttonGhost"
-                  onClick={() => void handleExportBackup()}
-                  disabled={isBackupBusy}
-                >
-                  {isBackupBusy ? "Operazione..." : "Backup (esporta JSON)"}
-                </button>
-                <button
-                  type="button"
-                  className="buttonGhost"
-                  onClick={() => restoreInputRef.current?.click()}
-                  disabled={isBackupBusy}
-                >
-                  Ripristina (import JSON)
-                </button>
+            <div className="home-card" role="group" aria-label="Sincronizzazione cloud">
+              <h2>Sincronizzazione Cloud</h2>
+              <p>Stato sync Firestore e retry outbox</p>
+              <div style={{ marginTop: "0.5rem" }}>
+                <SyncStatus />
               </div>
+              <div style={{ marginTop: "0.45rem" }}>
+                <CloudBackupButton />
+              </div>
+
+              <details style={{ marginTop: "0.85rem" }}>
+                <summary style={{ cursor: "pointer", fontWeight: 600 }}>
+                  Avanzate / Diagnostica
+                </summary>
+                <p style={{ margin: "0.5rem 0 0 0", fontSize: "0.9rem" }}>
+                  Backup/ripristino locale JSON (diagnostica/manuale)
+                </p>
+                <div style={{ display: "flex", gap: "0.45rem", flexWrap: "wrap", marginTop: "0.45rem" }}>
+                  <button
+                    type="button"
+                    className="buttonGhost"
+                    onClick={() => void handleExportBackup()}
+                    disabled={isBackupBusy}
+                  >
+                    {isBackupBusy ? "Operazione..." : "Backup (esporta JSON)"}
+                  </button>
+                  <button
+                    type="button"
+                    className="buttonGhost"
+                    onClick={() => restoreInputRef.current?.click()}
+                    disabled={isBackupBusy}
+                  >
+                    Ripristina (import JSON)
+                  </button>
+                </div>
+              </details>
             </div>
           </section>
         </div>

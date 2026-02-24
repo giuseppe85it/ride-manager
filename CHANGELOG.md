@@ -1,5 +1,16 @@
 # CHANGELOG
 
+## 2026-02-22 22:23:31 - aggiornamento
+- Commit: 2c602618ab2246309ece3b2b575a3e17ee939d50
+- Report: docs/ops-log/2026-02-22_22-23.md
+- Files changed:
+  - CHANGELOG.md
+  - STATE_NOW.md
+  - docs/ops-log/2026-02-22_20-37.md
+  - docs/ops-log/2026-02-22_21-03.md
+  - docs/ops-log/2026-02-22_21-26.md
+  - docs/ops-log/2026-02-22_21-48.md
+  - ops.log
 ## 2026-02-22 21:48:59 - feat: add local backup/restore json
 - Commit: eda401ee88128829375ce7ac1ec5cf7122451897
 - Report: docs/ops-log/2026-02-22_21-48.md

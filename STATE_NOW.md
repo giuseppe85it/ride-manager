@@ -1,5 +1,5 @@
 # STATE_NOW - RideManager (Gestione Viaggi Moto)
-Data aggiornamento: 22 02 2026
+Data aggiornamento: 24 02 2026
 
 ## Stack e vincoli
 - Stack: React + Vite + TypeScript, mappa Leaflet/React-Leaflet, persistenza locale IndexedDB.
@@ -105,12 +105,18 @@ Relazioni:
 
 ## Storage/DB (IndexedDB, verificato in `src/services/storage.ts`)
 - DB name: `RideManagerDB`
-- DB version: `7`
-- Store: `viaggi`, `giorni`, `gpxFiles`, `trackPoints`, `prenotazioni`, `costi`, `impostazioni`
+- DB version: `8`
+- Store: `viaggi`, `giorni`, `gpxFiles`, `trackPoints`, `prenotazioni`, `costi`, `impostazioni`, `outbox`
 - Migrazione: in `onupgradeneeded` crea store mancanti; non rimuove store esistenti nella versione attuale.
 - Normalizzazione retrocompatibile presente: `normalizeViaggio`, `normalizeGiorno`, `normalizePrenotazione`.
 - Funzioni storage esportate:
 - `initDB(): Promise<IDBDatabase>`
+- `enqueueOutbox(op: OutboxOp,
+  collection: CloudSyncCollectionName,
+  docId: string,
+  payload?: unknown,): Promise<OutboxRecord>`
+- `listOutbox(): Promise<OutboxRecord[]>`
+- `removeOutbox(id: string): Promise<void>`
 - `saveViaggio(viaggio: Viaggio): Promise<void>`
 - `getViaggi(): Promise<Viaggio[]>`
 - `getViaggioById(viaggioId: string): Promise<Viaggio | undefined>`

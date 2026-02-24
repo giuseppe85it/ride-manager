@@ -7,7 +7,7 @@ import type { TrackPoint } from "../models/TrackPoint";
 import type { Viaggio } from "../models/Viaggio";
 
 const DB_NAME = "RideManagerDB";
-const DB_VERSION = 7;
+const DB_VERSION = 8;
 
 const STORE_VIAGGI = "viaggi";
 const STORE_GIORNI = "giorni";
@@ -16,6 +16,7 @@ const STORE_TRACK_POINTS = "trackPoints";
 const STORE_PRENOTAZIONI = "prenotazioni";
 const STORE_COSTI = "costi";
 const STORE_IMPOSTAZIONI = "impostazioni";
+const STORE_OUTBOX = "outbox";
 const DEFAULT_VIAGGIO_STATO: Viaggio["stato"] = "PIANIFICAZIONE";
 const DEFAULT_GIORNO_STATO: Giorno["stato"] = "PIANIFICATO";
 const VIAGGIO_STATI: Viaggio["stato"][] = [
@@ -33,7 +34,8 @@ type StoreName =
   | typeof STORE_TRACK_POINTS
   | typeof STORE_PRENOTAZIONI
   | typeof STORE_COSTI
-  | typeof STORE_IMPOSTAZIONI;
+  | typeof STORE_IMPOSTAZIONI
+  | typeof STORE_OUTBOX;
 
 const BACKUP_STORES: StoreName[] = [
   STORE_VIAGGI,
@@ -63,6 +65,27 @@ export interface BackupPayload {
     costi: unknown[];
     impostazioni: unknown[];
   };
+}
+
+export type CloudSyncCollectionName =
+  | "viaggi"
+  | "giorni"
+  | "prenotazioni"
+  | "costi"
+  | "viaggi_index"
+  | "giorni_index"
+  | "costi_index"
+  | "prenotazioni_index";
+
+export type OutboxOp = "set" | "del";
+
+export interface OutboxRecord {
+  id: string;
+  ts: string;
+  op: OutboxOp;
+  collection: CloudSyncCollectionName;
+  docId: string;
+  payload?: unknown;
 }
 
 type LegacyViaggioRecord = Partial<Viaggio> & { id: string; titolo?: string };
@@ -595,6 +618,91 @@ async function getAllRecords<T>(storeName: StoreName): Promise<T[]> {
   return records as T[];
 }
 
+function runCloudMirrorTask(task: Promise<unknown>): void {
+  void task.catch((error) => {
+    console.warn("Cloud sync mirror failed", error);
+  });
+}
+
+async function mirrorCloudUpsert(
+  collection: CloudSyncCollectionName,
+  docId: string,
+  payload: unknown,
+): Promise<void> {
+  const { cloudUpsert } = await import("./cloudSync");
+  await cloudUpsert(collection, docId, payload);
+}
+
+async function mirrorCloudDelete(collection: CloudSyncCollectionName, docId: string): Promise<void> {
+  const { cloudDelete } = await import("./cloudSync");
+  await cloudDelete(collection, docId);
+}
+
+function buildViaggioIndexRecord(viaggio: Viaggio): Record<string, unknown> {
+  return {
+    id: viaggio.id,
+    nome: viaggio.nome,
+    dataInizio: viaggio.dataInizio,
+    dataFine: viaggio.dataFine,
+    stato: viaggio.stato,
+    valuta: viaggio.valuta,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function buildGiornoIndexRecord(giorno: Giorno): Record<string, unknown> {
+  return {
+    id: giorno.id,
+    viaggioId: giorno.viaggioId,
+    data: giorno.data,
+    titolo: giorno.titolo,
+    stato: giorno.stato,
+    createdAt: giorno.createdAt,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function buildCostoIndexRecord(costo: Costo): Record<string, unknown> {
+  return {
+    id: costo.id,
+    viaggioId: costo.viaggioId,
+    giornoId: costo.giornoId,
+    categoria: costo.categoria,
+    titolo: costo.titolo,
+    data: costo.data,
+    importo: costo.importo,
+    valuta: costo.valuta,
+    pagatoDa: costo.pagatoDa,
+    updatedAt: costo.updatedAt,
+  };
+}
+
+function buildPrenotazioneIndexRecord(prenotazione: Prenotazione): Record<string, unknown> {
+  return {
+    id: prenotazione.id,
+    viaggioId: prenotazione.viaggioId,
+    giornoId: prenotazione.giornoId,
+    tipo: prenotazione.tipo,
+    titolo: prenotazione.titolo,
+    dataInizio: prenotazione.dataInizio,
+    dataFine: prenotazione.dataFine,
+    costoTotale: prenotazione.costoTotale,
+    valuta: prenotazione.valuta,
+    pagato: prenotazione.pagato,
+    pagatoDa: prenotazione.pagatoDa,
+    stato: prenotazione.stato,
+    updatedAt: prenotazione.updatedAt,
+  };
+}
+
+function createOutboxId(): string {
+  if (typeof globalThis.crypto?.randomUUID === "function") {
+    return globalThis.crypto.randomUUID();
+  }
+
+  return `outbox_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
 export function initDB(): Promise<IDBDatabase> {
   if (dbPromise) {
     return dbPromise;
@@ -633,6 +741,10 @@ export function initDB(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains(STORE_IMPOSTAZIONI)) {
         db.createObjectStore(STORE_IMPOSTAZIONI, { keyPath: "id" });
       }
+
+      if (!db.objectStoreNames.contains(STORE_OUTBOX)) {
+        db.createObjectStore(STORE_OUTBOX, { keyPath: "id" });
+      }
     };
 
     request.onsuccess = () => {
@@ -659,8 +771,60 @@ export function initDB(): Promise<IDBDatabase> {
   return dbPromise;
 }
 
+export async function enqueueOutbox(
+  op: OutboxOp,
+  collection: CloudSyncCollectionName,
+  docId: string,
+  payload?: unknown,
+): Promise<OutboxRecord> {
+  const record: OutboxRecord = {
+    id: createOutboxId(),
+    ts: new Date().toISOString(),
+    op,
+    collection,
+    docId,
+    payload,
+  };
+
+  const db = await initDB();
+  const transaction = db.transaction(STORE_OUTBOX, "readwrite");
+  const store = transaction.objectStore(STORE_OUTBOX);
+  const existing = await requestToPromise(store.getAll());
+
+  for (const item of existing as OutboxRecord[]) {
+    if (item.collection === collection && item.docId === docId) {
+      store.delete(item.id);
+    }
+  }
+
+  store.put(record);
+  await transactionToPromise(transaction);
+  return record;
+}
+
+export async function listOutbox(): Promise<OutboxRecord[]> {
+  const records = await getAllRecords<OutboxRecord>(STORE_OUTBOX);
+  return records.sort((a, b) => {
+    if (a.ts === b.ts) {
+      return a.id.localeCompare(b.id);
+    }
+
+    return a.ts.localeCompare(b.ts);
+  });
+}
+
+export async function removeOutbox(id: string): Promise<void> {
+  const db = await initDB();
+  const transaction = db.transaction(STORE_OUTBOX, "readwrite");
+  transaction.objectStore(STORE_OUTBOX).delete(id);
+  await transactionToPromise(transaction);
+}
+
 export async function saveViaggio(viaggio: Viaggio): Promise<void> {
-  await putRecord(STORE_VIAGGI, normalizeViaggio(viaggio));
+  const normalized = normalizeViaggio(viaggio);
+  await putRecord(STORE_VIAGGI, normalized);
+  runCloudMirrorTask(mirrorCloudUpsert("viaggi", normalized.id, normalized));
+  runCloudMirrorTask(mirrorCloudUpsert("viaggi_index", normalized.id, buildViaggioIndexRecord(normalized)));
 }
 
 export async function getViaggi(): Promise<Viaggio[]> {
@@ -683,7 +847,10 @@ export async function getViaggioById(viaggioId: string): Promise<Viaggio | undef
 }
 
 export async function saveGiorno(giorno: Giorno): Promise<void> {
-  await putRecord(STORE_GIORNI, normalizeGiorno(giorno));
+  const normalized = normalizeGiorno(giorno);
+  await putRecord(STORE_GIORNI, normalized);
+  runCloudMirrorTask(mirrorCloudUpsert("giorni", normalized.id, normalized));
+  runCloudMirrorTask(mirrorCloudUpsert("giorni_index", normalized.id, buildGiornoIndexRecord(normalized)));
 }
 
 export async function getGiorniByViaggio(viaggioId: string): Promise<Giorno[]> {
@@ -798,6 +965,8 @@ export async function deleteGiorno(giornoId: string): Promise<void> {
   const transaction = db.transaction(STORE_GIORNI, "readwrite");
   transaction.objectStore(STORE_GIORNI).delete(giornoId);
   await transactionToPromise(transaction);
+  runCloudMirrorTask(mirrorCloudDelete("giorni", giornoId));
+  runCloudMirrorTask(mirrorCloudDelete("giorni_index", giornoId));
 }
 
 export async function savePrenotazione(prenotazione: Prenotazione): Promise<void> {
@@ -806,6 +975,10 @@ export async function savePrenotazione(prenotazione: Prenotazione): Promise<void
     throw new Error("Prenotazione non valida");
   }
   await putRecord(STORE_PRENOTAZIONI, normalized);
+  runCloudMirrorTask(mirrorCloudUpsert("prenotazioni", normalized.id, normalized));
+  runCloudMirrorTask(
+    mirrorCloudUpsert("prenotazioni_index", normalized.id, buildPrenotazioneIndexRecord(normalized)),
+  );
 }
 
 export async function getPrenotazioniByViaggio(viaggioId: string): Promise<Prenotazione[]> {
@@ -843,6 +1016,8 @@ export async function deletePrenotazione(id: string): Promise<void> {
   const transaction = db.transaction(STORE_PRENOTAZIONI, "readwrite");
   transaction.objectStore(STORE_PRENOTAZIONI).delete(id);
   await transactionToPromise(transaction);
+  runCloudMirrorTask(mirrorCloudDelete("prenotazioni", id));
+  runCloudMirrorTask(mirrorCloudDelete("prenotazioni_index", id));
 }
 
 export async function saveCosto(costo: Costo): Promise<void> {
@@ -851,6 +1026,8 @@ export async function saveCosto(costo: Costo): Promise<void> {
     throw new Error("Costo non valido");
   }
   await putRecord(STORE_COSTI, normalized);
+  runCloudMirrorTask(mirrorCloudUpsert("costi", normalized.id, normalized));
+  runCloudMirrorTask(mirrorCloudUpsert("costi_index", normalized.id, buildCostoIndexRecord(normalized)));
 }
 
 export async function getCostiByViaggio(viaggioId: string): Promise<Costo[]> {
@@ -888,6 +1065,8 @@ export async function deleteCosto(id: string): Promise<void> {
   const transaction = db.transaction(STORE_COSTI, "readwrite");
   transaction.objectStore(STORE_COSTI).delete(id);
   await transactionToPromise(transaction);
+  runCloudMirrorTask(mirrorCloudDelete("costi", id));
+  runCloudMirrorTask(mirrorCloudDelete("costi_index", id));
 }
 
 export async function getImpostazioniApp(): Promise<ImpostazioniApp | undefined> {
@@ -1060,4 +1239,6 @@ export async function deleteViaggioCascade(viaggioId: string): Promise<void> {
   const transaction = db.transaction(STORE_VIAGGI, "readwrite");
   transaction.objectStore(STORE_VIAGGI).delete(viaggioId);
   await transactionToPromise(transaction);
+  runCloudMirrorTask(mirrorCloudDelete("viaggi", viaggioId));
+  runCloudMirrorTask(mirrorCloudDelete("viaggi_index", viaggioId));
 }
