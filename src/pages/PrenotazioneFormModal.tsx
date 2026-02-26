@@ -345,6 +345,11 @@ export default function PrenotazioneFormModal({
         return;
       }
 
+      if (typeof costoTotale !== "number") {
+        setError("Costo totale non valido.");
+        return;
+      }
+
       quotaIo = toOptionalNumber(form.quotaIo);
       quotaLei = toOptionalNumber(form.quotaLei);
 

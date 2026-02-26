@@ -11,7 +11,11 @@ import type { Prenotazione } from "../models/Prenotazione";
 import type { TrackPoint } from "../models/TrackPoint";
 import DayMap from "../components/DayMap";
 import { reverseGeocode } from "../services/geocodeService";
-import { importGPXFile } from "../services/gpxService";
+import {
+  deleteGpxFileFromCloud,
+  importGPXFile,
+  recoverGpxTrackPointsFromCloud,
+} from "../services/gpxService";
 import { calculateTrackDistanceKm } from "../utils/geo";
 import { splitTrackIntoSegments } from "../utils/trackSegmentation";
 import {
@@ -340,6 +344,7 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
   const [endLocation, setEndLocation] = useState<string>("N/D");
   const [isResolvingLocations, setIsResolvingLocations] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+  const [isRecoveringGpx, setIsRecoveringGpx] = useState(false);
   const [isGeneratingRoute, setIsGeneratingRoute] = useState(false);
   const [isSearchingOrigin, setIsSearchingOrigin] = useState(false);
   const [isSearchingDestination, setIsSearchingDestination] = useState(false);
@@ -387,7 +392,7 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
 
     async function loadData(): Promise<void> {
       try {
-        const [gpxRecords, pointRecords, giornoRecord] = await Promise.all([
+        let [gpxRecords, pointRecords, giornoRecord] = await Promise.all([
           getGPXFilesByGiorno(giornoId),
           getTrackPointsByGiorno(giornoId),
           getGiorno(giornoId),
@@ -395,6 +400,38 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
         if (!isActive) {
           return;
         }
+
+        const recoverableGpxFiles = gpxRecords.filter(
+          (gpxFile) => typeof gpxFile.storagePath === "string" && gpxFile.storagePath.trim().length > 0,
+        );
+
+        if (pointRecords.length === 0 && recoverableGpxFiles.length > 0) {
+          setIsRecoveringGpx(true);
+          try {
+            try {
+              await recoverGpxTrackPointsFromCloud(recoverableGpxFiles);
+              if (!isActive) {
+                return;
+              }
+              [gpxRecords, pointRecords] = await Promise.all([
+                getGPXFilesByGiorno(giornoId),
+                getTrackPointsByGiorno(giornoId),
+              ]);
+              if (!isActive) {
+                return;
+              }
+            } catch (recoverError) {
+              console.warn("GPX lazy recovery failed", recoverError);
+            }
+          } finally {
+            if (isActive) {
+              setIsRecoveringGpx(false);
+            }
+          }
+        } else if (isActive) {
+          setIsRecoveringGpx(false);
+        }
+
         let hotelRecord: Prenotazione | null = null;
         let ferryRecords: Prenotazione[] = [];
         if (giornoRecord?.hotelPrenotazioneId) {
@@ -475,8 +512,12 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
 
     try {
       setError(null);
+      const targetGpxFile = gpxFiles.find((gpxFile) => gpxFile.id === gpxFileId);
+      if (targetGpxFile) {
+        await deleteGpxFileFromCloud(targetGpxFile);
+      }
       await deleteTrackPointsByGpxFileId(gpxFileId);
-      await deleteGPXFile(gpxFileId);
+      await deleteGPXFile(gpxFileId, { skipCloud: true });
       await reloadDataForDay(giornoId);
     } catch (deleteError) {
       const message = deleteError instanceof Error ? deleteError.message : "Errore cancellazione GPX";
@@ -1285,7 +1326,6 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
   const canUseHotelForDestination = Boolean(hotelDestinationCandidate);
   const dayPlan = giorno?.dayPlan;
   const timelineSegmentsCount = dayPlan?.segments.length ?? 0;
-  const hasTimelineSegments = timelineSegmentsCount > 0;
   const ferryPrenotazioniById = useMemo(
     () =>
       new Map(
@@ -2145,6 +2185,7 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
         </div>
 
         {isImporting && <p className="metaText">Import in corso...</p>}
+        {isRecoveringGpx && <p className="metaText">Recupero GPX…</p>}
         {error && <p className="errorText">{error}</p>}
         {gpxFiles.length === 0 && <p className="metaText">Nessun file GPX importato.</p>}
 

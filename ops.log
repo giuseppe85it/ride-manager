@@ -494,3 +494,31 @@
   - docs/ops-log/2026-02-22_21-26.md
   - docs/ops-log/2026-02-22_21-48.md
   - ops.log
+## 2026-02-24 18:46:39
+- Commit: efec86a1f7b809fcba1e8862a56df752dbb3fcff
+- Message: aggiornamento
+- Report: docs/ops-log/2026-02-24_18-46.md
+- Modified files:
+  - CHANGELOG.md
+  - RideManager_backup_2026-02-22_21-53.json
+  - STATE_NOW.md
+  - docs/ops-log/2026-02-22_22-23.md
+  - ops.log
+  - package-lock.json
+  - package.json
+  - src/App.tsx
+  - src/components/CloudBackupButton.tsx
+  - src/components/LoginScreen.tsx
+  - src/components/SyncStatus.tsx
+  - src/context/AuthContext.tsx
+  - src/firebase/authService.ts
+  - src/firebase/firebaseApp.ts
+  - src/firebase/firebaseAuth.ts
+  - src/firebase/firestore.ts
+  - src/firebase/firestoreHelpers.ts
+  - src/firebase/storage.ts
+  - src/main.tsx
+  - src/pages/Home.tsx
+  - src/services/cloudBackup.ts
+  - src/services/cloudSync.ts
+  - src/services/storage.ts

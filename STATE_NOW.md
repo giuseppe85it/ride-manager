@@ -1,5 +1,5 @@
 # STATE_NOW - RideManager (Gestione Viaggi Moto)
-Data aggiornamento: 24 02 2026
+Data aggiornamento: 26 02 2026
 
 ## Stack e vincoli
 - Stack: React + Vite + TypeScript, mappa Leaflet/React-Leaflet, persistenza locale IndexedDB.
@@ -34,16 +34,23 @@ Data aggiornamento: 24 02 2026
 - `createdAt: string`
 ### GPXFile (`src/models/GPXFile.ts`)
 - `id: string`
+- `viaggioId?: string`
 - `giornoId: string`
 - `kind: "planned" | "actual"`
 - `name: string`
+- `filename?: string`
 - `uri: string`
-- `source: "bmw"`
+- `source: "bmw" | "BMW" | "manual"`
 - `startTime: string`
 - `endTime: string`
 - `durationMin: number`
 - `pointsCount: number`
+- `storagePath?: string`
+- `downloadUrl?: string`
+- `rawSizeBytes?: number`
 - `createdAt: string`
+- `updatedAt?: string`
+- `_clientId?: string`
 ### TrackPoint (`src/models/TrackPoint.ts`)
 - `id?: number`
 - `gpxFileId: string`
@@ -116,38 +123,45 @@ Relazioni:
   docId: string,
   payload?: unknown,): Promise<OutboxRecord>`
 - `listOutbox(): Promise<OutboxRecord[]>`
+- `hasPendingOutboxEntry(collection: CloudSyncCollectionName,
+  docId: string,): Promise<boolean>`
 - `removeOutbox(id: string): Promise<void>`
-- `saveViaggio(viaggio: Viaggio): Promise<void>`
+- `saveViaggio(viaggio: Viaggio, opts?: CloudMirrorOptions): Promise<void>`
 - `getViaggi(): Promise<Viaggio[]>`
+- `getViaggiRecordCount(): Promise<number>`
+- `getCloudSyncRecordRaw(collection: RealtimeDataCollectionName,
+  docId: string,): Promise<Record<string, unknown> | undefined>`
 - `getViaggioById(viaggioId: string): Promise<Viaggio | undefined>`
-- `saveGiorno(giorno: Giorno): Promise<void>`
+- `saveGiorno(giorno: Giorno, opts?: CloudMirrorOptions): Promise<void>`
 - `getGiorniByViaggio(viaggioId: string): Promise<Giorno[]>`
 - `getGiorno(giornoId: string): Promise<Giorno | undefined>`
-- `saveGPXFile(gpxFile: GPXFile): Promise<void>`
+- `saveGPXFile(gpxFile: GPXFile, _opts?: CloudMirrorOptions): Promise<void>`
 - `getGPXFilesByGiorno(giornoId: string): Promise<GPXFile[]>`
-- `deleteGPXFile(gpxFileId: string): Promise<void>`
+- `deleteGPXFile(gpxFileId: string, _opts?: CloudMirrorOptions): Promise<void>`
 - `saveTrackPoints(trackPoints: TrackPoint[]): Promise<void>`
 - `getTrackPoints(): Promise<TrackPoint[]>`
 - `getTrackPointsByGiorno(giornoId: string): Promise<TrackPoint[]>`
 - `deleteTrackPointsByGpxFileId(gpxFileId: string): Promise<void>`
 - `deleteTrackPointsByGiornoId(giornoId: string): Promise<void>`
 - `deleteGpxFilesByGiornoId(giornoId: string): Promise<void>`
-- `deleteGiorno(giornoId: string): Promise<void>`
-- `savePrenotazione(prenotazione: Prenotazione): Promise<void>`
+- `deleteGiorno(giornoId: string, opts?: CloudMirrorOptions): Promise<void>`
+- `savePrenotazione(prenotazione: Prenotazione,
+  opts?: CloudMirrorOptions,): Promise<void>`
 - `getPrenotazioniByViaggio(viaggioId: string): Promise<Prenotazione[]>`
 - `getPrenotazioniByGiorno(giornoId: string): Promise<Prenotazione[]>`
 - `getPrenotazione(id: string): Promise<Prenotazione | undefined>`
-- `deletePrenotazione(id: string): Promise<void>`
-- `saveCosto(costo: Costo): Promise<void>`
+- `deletePrenotazione(id: string, opts?: CloudMirrorOptions): Promise<void>`
+- `saveCosto(costo: Costo, opts?: CloudMirrorOptions): Promise<void>`
 - `getCostiByViaggio(viaggioId: string): Promise<Costo[]>`
 - `getCostiByGiorno(giornoId: string): Promise<Costo[]>`
 - `getCosto(id: string): Promise<Costo | undefined>`
-- `deleteCosto(id: string): Promise<void>`
+- `deleteCosto(id: string, opts?: CloudMirrorOptions): Promise<void>`
 - `getImpostazioniApp(): Promise<ImpostazioniApp | undefined>`
 - `saveImpostazioniApp(data: ImpostazioniApp): Promise<void>`
 - `exportBackupJSON(): Promise<BackupPayload>`
 - `restoreFromBackupJSON(payload: BackupPayload): Promise<void>`
-- `deleteViaggioCascade(viaggioId: string): Promise<void>`
+- `deleteViaggioCascade(viaggioId: string,
+  opts?: CloudMirrorOptions,): Promise<void>`
 
 ## UI flow (pagine e navigazione reale)
 - Entry: `src/App.tsx` con stato vista locale (`home` -> `viaggi` -> `dettaglioViaggio` -> `giornoDettaglio`).

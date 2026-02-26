@@ -486,6 +486,7 @@ function getBookingBalanceContributionWithLabels(
       nonAssegnato: 0,
       missingPayer: false,
       invalidSplit: false,
+      invalidAmount: false,
     };
   }
 
@@ -497,6 +498,7 @@ function getBookingBalanceContributionWithLabels(
       nonAssegnato: 0,
       missingPayer: false,
       invalidSplit: false,
+      invalidAmount: false,
     };
   }
 

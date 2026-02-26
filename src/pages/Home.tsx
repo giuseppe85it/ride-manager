@@ -13,10 +13,6 @@ interface HomeProps {
   onOpenViaggi: () => void;
 }
 
-function showComingSoon(featureName: string): void {
-  window.alert(`${featureName}: in arrivo`);
-}
-
 function buildBackupFileName(date = new Date()): string {
   const pad = (value: number) => String(value).padStart(2, "0");
   const year = date.getFullYear();
@@ -155,73 +151,87 @@ export default function Home({ onOpenViaggi }: HomeProps) {
             <p className="home-kicker">Travel dashboard</p>
             <h1>RideManager</h1>
             <span className="home-badge">{"Offline \u2022 GPX \u2022 PWA"}</span>
+            <p className="home-header-helper">
+              Gestisci viaggi, import GPX e sincronizzazione cloud da una dashboard unica.
+            </p>
           </header>
 
-          <section className="home-grid">
-            <button type="button" className="home-card home-card-primary" onClick={onOpenViaggi}>
-              <h2>Viaggi</h2>
-              <p>Gestisci viaggi e tappe</p>
-            </button>
+          <section className="home-grid" aria-label="Azioni home">
+            <div className="home-grid-row home-grid-row-fixed">
+              <button type="button" className="home-card home-card-primary" onClick={onOpenViaggi}>
+                <h2>Viaggi</h2>
+                <p>Gestisci viaggi e tappe</p>
+                <span className="home-chip home-chip-primary">Azione principale</span>
+              </button>
 
-            <button
-              type="button"
-              className="home-card"
-              onClick={() => quickImportInputRef.current?.click()}
-              disabled={isQuickImporting}
-            >
-              <h2>Import GPX rapido</h2>
-              <p>{isQuickImporting ? "Import in corso..." : "BMW one-click auto-assign"}</p>
-            </button>
+              <button
+                type="button"
+                className="home-card"
+                onClick={() => quickImportInputRef.current?.click()}
+                disabled={isQuickImporting}
+              >
+                <h2>Import GPX rapido</h2>
+                <p>{isQuickImporting ? "Import in corso..." : "BMW one-click auto-assign"}</p>
+              </button>
+            </div>
 
-            <button
-              type="button"
-              className="home-card"
-              onClick={() => setIsSettingsOpen(true)}
-            >
-              <h2>Impostazioni</h2>
-              <p>
-                {partecipantiCount > 0
-                  ? `${partecipantiCount} partecipanti configurati`
-                  : "Configura partecipanti"}
-              </p>
-            </button>
-
-            <div className="home-card" role="group" aria-label="Sincronizzazione cloud">
-              <h2>Sincronizzazione Cloud</h2>
-              <p>Stato sync Firestore e retry outbox</p>
-              <div style={{ marginTop: "0.5rem" }}>
-                <SyncStatus />
-              </div>
-              <div style={{ marginTop: "0.45rem" }}>
-                <CloudBackupButton />
-              </div>
-
-              <details style={{ marginTop: "0.85rem" }}>
-                <summary style={{ cursor: "pointer", fontWeight: 600 }}>
-                  Avanzate / Diagnostica
-                </summary>
-                <p style={{ margin: "0.5rem 0 0 0", fontSize: "0.9rem" }}>
-                  Backup/ripristino locale JSON (diagnostica/manuale)
+            <div className="home-grid-row home-grid-row-stretch">
+              <button
+                type="button"
+                className="home-card"
+                onClick={() => setIsSettingsOpen(true)}
+              >
+                <h2>Impostazioni</h2>
+                <p>
+                  {partecipantiCount > 0
+                    ? `${partecipantiCount} partecipanti configurati`
+                    : "Configura partecipanti"}
                 </p>
-                <div style={{ display: "flex", gap: "0.45rem", flexWrap: "wrap", marginTop: "0.45rem" }}>
-                  <button
-                    type="button"
-                    className="buttonGhost"
-                    onClick={() => void handleExportBackup()}
-                    disabled={isBackupBusy}
-                  >
-                    {isBackupBusy ? "Operazione..." : "Backup (esporta JSON)"}
-                  </button>
-                  <button
-                    type="button"
-                    className="buttonGhost"
-                    onClick={() => restoreInputRef.current?.click()}
-                    disabled={isBackupBusy}
-                  >
-                    Ripristina (import JSON)
-                  </button>
+              </button>
+
+              <div className="home-card home-card-cloud" role="group" aria-label="Sincronizzazione cloud">
+                <h2>Sincronizzazione Cloud</h2>
+                <p className="home-cloud-subtitle">Stato sync Firestore e retry outbox</p>
+
+                <div className="home-cloud-chips" aria-label="Stato sincronizzazione">
+                  <span className="home-chip home-chip-success">Firestore: Online</span>
+                  <span className="home-chip">Outbox: 0</span>
+                  <span className="home-chip home-chip-strong">Stato: OK</span>
                 </div>
-              </details>
+
+                <div className="home-cloud-live">
+                  <SyncStatus />
+                </div>
+
+                <div className="home-cloud-backup">
+                  <CloudBackupButton />
+                </div>
+
+                <details className="home-diagnostics" open>
+                  <summary className="home-diagnostics-summary">Avanzate / Diagnostica</summary>
+                  <p className="home-diagnostics-text">
+                    Backup/ripristino locale JSON (diagnostica/manuale)
+                  </p>
+                  <div className="home-diagnostics-actions">
+                    <button
+                      type="button"
+                      className="buttonGhost home-ghostAction"
+                      onClick={() => void handleExportBackup()}
+                      disabled={isBackupBusy}
+                    >
+                      {isBackupBusy ? "Operazione..." : "Backup (esporta JSON)"}
+                    </button>
+                    <button
+                      type="button"
+                      className="buttonGhost home-ghostAction"
+                      onClick={() => restoreInputRef.current?.click()}
+                      disabled={isBackupBusy}
+                    >
+                      Ripristina (import JSON)
+                    </button>
+                  </div>
+                </details>
+              </div>
             </div>
           </section>
         </div>

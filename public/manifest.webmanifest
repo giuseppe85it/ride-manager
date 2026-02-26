@@ -1,0 +1,32 @@
+{
+    "name":  "ride-manager",
+    "short_name":  "RideManager",
+    "start_url":  "/",
+    "display":  "standalone",
+    "background_color":  "#0b0b0b",
+    "theme_color":  "#0b0b0b",
+    "icons":  [
+                  {
+                      "type":  "image/png",
+                      "sizes":  "192x192",
+                      "src":  "/icons/icon-192-v2.png"
+                  },
+                  {
+                      "type":  "image/png",
+                      "sizes":  "512x512",
+                      "src":  "/icons/icon-512-v2.png"
+                  },
+                  {
+                      "purpose":  "maskable",
+                      "type":  "image/png",
+                      "sizes":  "192x192",
+                      "src":  "/icons/icon-192-maskable-v2.png"
+                  },
+                  {
+                      "purpose":  "maskable",
+                      "type":  "image/png",
+                      "sizes":  "512x512",
+                      "src":  "/icons/icon-512-maskable-v2.png"
+                  }
+              ]
+}

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { disableNetwork, enableNetwork } from "firebase/firestore";
 import "leaflet/dist/leaflet.css";
 import "./styles/layout.css";
@@ -9,6 +9,8 @@ import Viaggi from "./pages/Viaggi";
 import { useAuth } from "./context/AuthContext";
 import { db } from "./firebase/firestore";
 import LoginScreen from "./components/LoginScreen";
+import { bootstrapFromCloudIfEmpty } from "./services/cloudBootstrap";
+import { startRealtimeSync } from "./services/cloudRealtime";
 import { flushOutbox } from "./services/cloudSync";
 
 type AppView =
@@ -20,6 +22,55 @@ type AppView =
 function App() {
   const { user, loading } = useAuth();
   const [view, setView] = useState<AppView>({ page: "home" });
+  const [bootstrapReady, setBootstrapReady] = useState(false);
+  const bootstrapTaskRef = useRef<{ uid: string; promise: Promise<void> } | null>(null);
+
+  useEffect(() => {
+    if (loading) {
+      return;
+    }
+
+    if (!user) {
+      setBootstrapReady(false);
+      bootstrapTaskRef.current = null;
+      return;
+    }
+
+    let cancelled = false;
+    setBootstrapReady(false);
+
+    const existingTask =
+      bootstrapTaskRef.current?.uid === user.uid ? bootstrapTaskRef.current.promise : null;
+
+    const task =
+      existingTask ??
+      (async () => {
+        try {
+          const result = await bootstrapFromCloudIfEmpty();
+          if ("ok" in result) {
+            console.info("Cloud bootstrap completed", result.counts);
+          } else {
+            console.info("Cloud bootstrap skipped", result);
+          }
+        } catch (error) {
+          console.warn("Cloud bootstrap failed", error);
+        }
+      })();
+
+    if (!existingTask) {
+      bootstrapTaskRef.current = { uid: user.uid, promise: task };
+    }
+
+    void task.finally(() => {
+      if (!cancelled) {
+        setBootstrapReady(true);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [loading, user?.uid]);
 
   useEffect(() => {
     if (loading || !user) {
@@ -63,7 +114,15 @@ function App() {
     };
   }, [loading, user]);
 
-  if (loading) return null;
+  useEffect(() => {
+    if (loading || !user || !bootstrapReady) {
+      return;
+    }
+
+    return startRealtimeSync();
+  }, [loading, user?.uid, bootstrapReady]);
+
+  if (loading || (user && !bootstrapReady)) return null;
 
   if (!user) return <LoginScreen />;
 

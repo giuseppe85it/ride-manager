@@ -57,7 +57,7 @@ export async function cloudBackupViaggi(): Promise<number> {
   const viaggi = await getViaggi();
 
   for (const viaggio of viaggi) {
-    const rawViaggio = viaggio as Record<string, unknown>;
+    const rawViaggio = viaggio as unknown as Record<string, unknown>;
     const displayName =
       viaggio.nome ??
       (typeof rawViaggio.displayName === "string" ? rawViaggio.displayName : undefined) ??

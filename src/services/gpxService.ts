@@ -1,8 +1,15 @@
+import { deleteObject, getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import type { GPXFile } from "../models/GPXFile";
 import type { Giorno } from "../models/Giorno";
 import type { TrackPoint } from "../models/TrackPoint";
 import type { Viaggio } from "../models/Viaggio";
+import { firebaseAuth } from "../firebase/firebaseAuth";
+import { deleteUserDoc, setUserDocMerge } from "../firebase/firestoreHelpers";
+import { storage as firebaseStorage } from "../firebase/storage";
+import { getClientId } from "./clientIdentity";
 import {
+  deleteTrackPointsByGpxFileId,
+  getGiorno,
   getGiorniByViaggio,
   getViaggi,
   saveGiorno,
@@ -30,10 +37,15 @@ export interface GPXStats {
 
 interface GPXRecordOptions {
   id: string;
+  viaggioId?: string;
   giornoId: string;
   kind?: GPXFile["kind"];
   uri?: string;
   pointsCount: number;
+  storagePath?: string;
+  downloadUrl?: string;
+  rawSizeBytes?: number;
+  source?: GPXFile["source"];
 }
 
 export interface AutoAssignImportSummary {
@@ -156,15 +168,20 @@ function deriveLocalDateFromParsed(parsed: ParsedGPX, stats: GPXStats): string {
   return toLocalDateYmd(firstValidTime);
 }
 
-async function persistParsedGpxToGiorno(file: File, giornoId: string, parsed: ParsedGPX, stats: GPXStats): Promise<GPXFile> {
-  const gpxFileId = generateId("gpx");
-  const gpxFile = createGPXFileRecord(file, stats, {
-    id: gpxFileId,
-    giornoId,
-    pointsCount: parsed.trackPoints.length,
-  });
+function requireAuthenticatedUid(): string {
+  const uid = firebaseAuth.currentUser?.uid;
+  if (!uid) {
+    throw new Error("Utente non autenticato");
+  }
+  return uid;
+}
 
-  const trackPoints: TrackPoint[] = parsed.trackPoints.map((point, index) => ({
+function buildCloudStoragePath(uid: string, gpxId: string): string {
+  return `users/${uid}/gpx/${gpxId}.gpx`;
+}
+
+function buildTrackPointsFromParsed(parsed: ParsedGPX, gpxFileId: string, giornoId: string): TrackPoint[] {
+  return parsed.trackPoints.map((point, index) => ({
     gpxFileId,
     giornoId,
     pointIndex: index,
@@ -173,9 +190,81 @@ async function persistParsedGpxToGiorno(file: File, giornoId: string, parsed: Pa
     time: point.time,
     elevation: point.elevation,
   }));
+}
 
+function toCloudSource(source: GPXFile["source"] | undefined): "BMW" | "manual" {
+  return source === "manual" ? "manual" : "BMW";
+}
+
+async function uploadGpxToCloud(file: File, gpxFileId: string): Promise<{
+  storagePath: string;
+  downloadUrl?: string;
+  rawSizeBytes: number;
+}> {
+  const uid = requireAuthenticatedUid();
+  const storagePath = buildCloudStoragePath(uid, gpxFileId);
+  const objectRef = ref(firebaseStorage, storagePath);
+
+  await uploadBytes(objectRef, file);
+
+  let downloadUrl: string | undefined;
+  try {
+    downloadUrl = await getDownloadURL(objectRef);
+  } catch (error) {
+    console.warn("Unable to resolve GPX download URL after upload", error);
+  }
+
+  return {
+    storagePath,
+    downloadUrl,
+    rawSizeBytes: file.size,
+  };
+}
+
+async function saveGpxMetadataToCloud(gpxFile: GPXFile): Promise<void> {
+  const nowIso = new Date().toISOString();
+  const updatedAt = gpxFile.updatedAt ?? nowIso;
+
+  await setUserDocMerge("gpxFiles", gpxFile.id, {
+    id: gpxFile.id,
+    viaggioId: gpxFile.viaggioId,
+    giornoId: gpxFile.giornoId,
+    filename: gpxFile.filename ?? gpxFile.name,
+    name: gpxFile.name,
+    kind: gpxFile.kind,
+    uri: gpxFile.uri,
+    storagePath: gpxFile.storagePath,
+    downloadUrl: gpxFile.downloadUrl,
+    rawSizeBytes: gpxFile.rawSizeBytes,
+    startTime: gpxFile.startTime,
+    endTime: gpxFile.endTime,
+    durationMin: gpxFile.durationMin,
+    pointsCount: gpxFile.pointsCount,
+    source: toCloudSource(gpxFile.source),
+    createdAt: gpxFile.createdAt,
+    updatedAt,
+    _clientId: getClientId(),
+  });
+}
+
+async function persistParsedGpxToGiorno(file: File, giornoId: string, parsed: ParsedGPX, stats: GPXStats): Promise<GPXFile> {
+  const gpxFileId = generateId("gpx");
+  const giorno = await getGiorno(giornoId);
+  const uploadResult = await uploadGpxToCloud(file, gpxFileId);
+  const gpxFile = createGPXFileRecord(file, stats, {
+    id: gpxFileId,
+    viaggioId: giorno?.viaggioId,
+    giornoId,
+    pointsCount: parsed.trackPoints.length,
+    storagePath: uploadResult.storagePath,
+    downloadUrl: uploadResult.downloadUrl,
+    rawSizeBytes: uploadResult.rawSizeBytes,
+  });
+  const trackPoints = buildTrackPointsFromParsed(parsed, gpxFileId, giornoId);
+
+  await saveGpxMetadataToCloud(gpxFile);
   await saveTrackPoints(trackPoints);
-  await saveGPXFile(gpxFile);
+  await saveGPXFile(gpxFile, { skipCloud: true });
 
   return gpxFile;
 }
@@ -321,17 +410,83 @@ export function createGPXFileRecord(
   stats: GPXStats,
   options: GPXRecordOptions
 ): GPXFile {
+  const nowIso = new Date().toISOString();
   return {
     id: options.id,
+    viaggioId: options.viaggioId,
     giornoId: options.giornoId,
     kind: options.kind ?? "actual",
     name: file.name,
+    filename: file.name,
     uri: options.uri ?? file.name,
-    source: "bmw",
+    source: options.source ?? "bmw",
     startTime: stats.startTime,
     endTime: stats.endTime,
     durationMin: stats.durationMin,
     pointsCount: options.pointsCount,
-    createdAt: new Date().toISOString(),
+    storagePath: options.storagePath,
+    downloadUrl: options.downloadUrl,
+    rawSizeBytes: options.rawSizeBytes,
+    createdAt: nowIso,
+    updatedAt: nowIso,
   };
+}
+
+export async function deleteGpxFileFromCloud(gpxFile: GPXFile): Promise<void> {
+  if (!firebaseAuth.currentUser) {
+    return;
+  }
+
+  await deleteUserDoc("gpxFiles", gpxFile.id);
+
+  const storagePath = gpxFile.storagePath?.trim();
+  if (!storagePath) {
+    return;
+  }
+
+  try {
+    await deleteObject(ref(firebaseStorage, storagePath));
+  } catch (error) {
+    console.warn(`GPX storage delete failed for ${storagePath}`, error);
+  }
+}
+
+export async function recoverGpxTrackPointsFromCloud(gpxFiles: GPXFile[]): Promise<number> {
+  let recovered = 0;
+
+  for (const gpxFile of gpxFiles) {
+    const storagePath = gpxFile.storagePath?.trim();
+    if (!storagePath) {
+      continue;
+    }
+
+    const objectRef = ref(firebaseStorage, storagePath);
+    const downloadUrl = await getDownloadURL(objectRef);
+    const response = await fetch(downloadUrl);
+    if (!response.ok) {
+      throw new Error(`Download GPX fallito (${response.status})`);
+    }
+
+    const text = await response.text();
+    const parsed = parseGPX(text);
+    if (parsed.trackPoints.length === 0) {
+      throw new Error(`GPX remoto senza trackpoint validi (${gpxFile.name})`);
+    }
+
+    await deleteTrackPointsByGpxFileId(gpxFile.id);
+    await saveTrackPoints(buildTrackPointsFromParsed(parsed, gpxFile.id, gpxFile.giornoId));
+    await saveGPXFile(
+      {
+        ...gpxFile,
+        filename: gpxFile.filename ?? gpxFile.name,
+        name: gpxFile.name || gpxFile.filename || "GPX",
+        downloadUrl,
+      },
+      { skipCloud: true },
+    );
+
+    recovered += 1;
+  }
+
+  return recovered;
 }

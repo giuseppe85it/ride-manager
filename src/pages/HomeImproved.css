@@ -1,14 +1,31 @@
 @import "../styles/theme.css";
 
-.home-layout {
+.hiHome {
+  min-height: 100vh;
+  width: 100%;
+  background:
+    radial-gradient(1000px 480px at 110% -10%, rgb(31 111 235 / 28%), transparent 62%),
+    radial-gradient(720px 420px at -10% 105%, rgb(225 29 72 / 18%), transparent 60%),
+    var(--rm-bg);
+  color: var(--rm-text);
+  font-family: var(--rm-font-display);
+}
+
+.hiHome__shell {
+  width: min(1240px, 100%);
+  margin: 0 auto;
+  padding: 28px;
+  box-sizing: border-box;
+}
+
+.hiHome__layout {
   display: grid;
   grid-template-columns: 500px minmax(0, 1fr);
   gap: 20px;
   min-height: 704px;
-  align-items: stretch;
 }
 
-.home-header {
+.hiHome__header {
   background: #111827;
   border: 1px solid #273348;
   border-radius: 16px;
@@ -16,39 +33,38 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
-  min-width: 0;
 }
 
-.home-kicker {
+.hiHome__kicker {
   margin: 0;
   color: #60a5fa;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
+  font-size: 12px;
   font-weight: 700;
-  font-size: 0.75rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
 }
 
-.home-header h1 {
+.hiHome__title {
   margin: 0;
   font-size: 42px;
   line-height: 1;
   color: #fff;
 }
 
-.home-badge {
+.hiHome__badge {
+  width: fit-content;
   display: inline-flex;
   align-items: center;
-  width: fit-content;
   padding: 8px 12px;
   border-radius: 999px;
-  background: #1a2333;
   border: 1px solid #31445f;
+  background: #1a2333;
   color: #b9c0ce;
   font-size: 13px;
   line-height: 1;
 }
 
-.home-header-helper {
+.hiHome__helper {
   margin: 0;
   color: #aab4c6;
   font-size: 14px;
@@ -56,92 +72,83 @@
   max-width: 34ch;
 }
 
-.home-grid {
+.hiHome__grid {
   display: grid;
   grid-template-rows: 154px minmax(0, 1fr);
   gap: 16px;
   min-width: 0;
 }
 
-.home-grid-row {
+.hiHome__row {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
   min-width: 0;
 }
 
-.home-grid-row-fixed {
+.hiHome__row--fixed {
   height: 154px;
 }
 
-.home-grid-row-stretch {
+.hiHome__row--flex {
   min-height: 0;
 }
 
-.home-card {
+.hiCard {
   width: 100%;
   min-width: 0;
-  border-radius: 14px;
-  border: 1px solid #273348;
   background: #111827;
   color: #fff;
+  border: 1px solid #273348;
+  border-radius: 14px;
   padding: 18px;
-  box-sizing: border-box;
   text-align: left;
   display: flex;
   flex-direction: column;
   gap: 8px;
+  box-sizing: border-box;
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 2%);
-  transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
 }
 
-button.home-card {
+button.hiCard {
   cursor: pointer;
   font: inherit;
 }
 
-.home-card h2 {
+.hiCard--primary {
+  background: #121a2a;
+  border-color: #315b99;
+}
+
+.hiCard--cloud {
+  gap: 10px;
+}
+
+.hiCard__title {
   margin: 0;
   font-size: 22px;
   line-height: 1.15;
-  color: #fff;
+  font-weight: 700;
 }
 
-.home-card p {
+.hiCard__title--cloud {
+  font-size: 21px;
+}
+
+.hiCard__text {
   margin: 0;
   color: #b9c0ce;
   font-size: 14px;
   line-height: 1.3;
 }
 
-.home-card-primary {
-  background: #121a2a;
-  border-color: #315b99;
-}
-
-.home-card-primary .home-chip {
-  margin-top: auto;
-}
-
-.home-card-cloud {
-  gap: 10px;
-}
-
-.home-card-cloud h2 {
-  font-size: 21px;
-}
-
-.home-cloud-subtitle {
-  margin: 0;
-}
-
-.home-cloud-chips {
+.hiChips {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
 }
 
-.home-chip {
+.hiChip {
   display: inline-flex;
   align-items: center;
   width: fit-content;
@@ -154,133 +161,132 @@ button.home-card {
   line-height: 1;
 }
 
-.home-chip-primary {
+.hiChip--primary {
   border-color: #355a92;
   background: #16233a;
   color: #cfe1ff;
   font-weight: 700;
 }
 
-.home-chip-success {
+.hiChip--success {
   border-color: #1f7a46;
   background: #102a1b;
   color: #b7f7cc;
   font-weight: 700;
 }
 
-.home-chip-strong {
+.hiChip--neutral {
+  color: #d0d8e5;
+}
+
+.hiChip--neutralStrong {
+  color: #d0d8e5;
   font-weight: 700;
 }
 
-.home-cloud-live {
-  margin-top: 2px;
-}
-
-.home-cloud-backup {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-}
-
-.home-cloud-backup > * {
-  max-width: 100%;
-}
-
-.home-cloud-backup button {
+.hiButton {
   border-radius: 10px;
+  border: 1px solid #31445f;
+  background: #172235;
+  color: #fff;
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.1;
+  cursor: pointer;
+  text-align: center;
 }
 
-.home-diagnostics {
-  margin-top: 2px;
+.hiButton--cloud {
+  width: fit-content;
+  padding: 9px 14px;
+  border-color: #355a92;
+  background: #16233a;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.hiButton--ghost {
+  width: 100%;
+}
+
+.hiCloudAdvanced {
   width: 100%;
   background: #0f172a;
   border: 1px solid #25324a;
   border-radius: 12px;
   padding: 12px;
   box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
-.home-diagnostics[open] summary {
-  margin-bottom: 8px;
-}
-
-.home-diagnostics-summary {
-  list-style: none;
-  cursor: pointer;
-  color: #fff;
+.hiCloudAdvanced__title {
+  margin: 0;
   font-size: 13px;
+  line-height: 1.2;
   font-weight: 700;
+  color: #fff;
 }
 
-.home-diagnostics-summary::-webkit-details-marker {
-  display: none;
-}
-
-.home-diagnostics-text {
+.hiCloudAdvanced__text {
   margin: 0;
   color: #b9c0ce;
   font-size: 12px;
   line-height: 1.35;
 }
 
-.home-diagnostics-actions {
+.hiCloudAdvanced__actions {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  margin-top: 8px;
-}
-
-.home-ghostAction {
-  width: 100%;
-  justify-content: center;
-  text-align: center;
-  padding: 8px 10px;
-  border-radius: 10px;
-  font-size: 12px;
 }
 
 @media (max-width: 1080px) {
-  .home-layout {
+  .hiHome__layout {
     grid-template-columns: 1fr;
     min-height: auto;
   }
 
-  .home-grid {
+  .hiHome__header {
+    min-height: auto;
+  }
+
+  .hiHome__grid {
     grid-template-rows: auto;
   }
 
-  .home-grid-row-fixed {
+  .hiHome__row--fixed {
     height: auto;
   }
 
-  .home-grid-row {
+  .hiHome__row {
     grid-template-columns: 1fr;
   }
 }
 
 @media (max-width: 699px) {
-  .home-header h1 {
+  .hiHome__shell {
+    padding: 16px;
+  }
+
+  .hiHome__title {
     font-size: 34px;
   }
 
-  .home-card h2 {
+  .hiCard__title {
     font-size: 20px;
   }
 }
 
 @media (hover: hover) and (pointer: fine) {
-  button.home-card:hover {
-    transform: translateY(-1px);
+  button.hiCard:hover {
     border-color: #3f82ff;
-    box-shadow: 0 10px 26px rgb(31 111 235 / 12%);
+    transform: translateY(-1px);
   }
 
-  .home-card-primary:hover {
-    border-color: #4a8bff;
-    box-shadow: 0 12px 28px rgb(31 111 235 / 14%);
-  }
-
-  .home-ghostAction:hover {
+  .hiButton:hover {
     border-color: #3f82ff;
   }
 }

@@ -1,5 +1,5 @@
-import type { Costo, CostoCategoria, CostoPagatoDa } from "../models/Costo";
-import type { Giorno } from "../models/Giorno";
+import type { Costo, CostoCategoria } from "../models/Costo";
+import type { DayPlanSegment, Giorno } from "../models/Giorno";
 import type { GPXFile } from "../models/GPXFile";
 import type { ImpostazioniApp, Partecipante } from "../models/ImpostazioniApp";
 import type { Prenotazione, PrenotazioneStato, PrenotazioneTipo } from "../models/Prenotazione";
@@ -70,6 +70,7 @@ export interface BackupPayload {
 export type CloudSyncCollectionName =
   | "viaggi"
   | "giorni"
+  | "gpxFiles"
   | "prenotazioni"
   | "costi"
   | "viaggi_index"
@@ -87,6 +88,15 @@ export interface OutboxRecord {
   docId: string;
   payload?: unknown;
 }
+
+export interface CloudMirrorOptions {
+  skipCloud?: boolean;
+}
+
+export type RealtimeDataCollectionName = Extract<
+  CloudSyncCollectionName,
+  "viaggi" | "giorni" | "gpxFiles" | "prenotazioni" | "costi"
+>;
 
 type LegacyViaggioRecord = Partial<Viaggio> & { id: string; titolo?: string };
 type LegacyGiornoRecord = Partial<Giorno> & { id: string; viaggioId?: string };
@@ -146,10 +156,6 @@ function isCostoCategoria(value: unknown): value is CostoCategoria {
   );
 }
 
-function isCostoPagatoDa(value: unknown): value is CostoPagatoDa {
-  return value === "IO" || value === "LEI" || value === "DIVISO";
-}
-
 function toValidIso(value: unknown): string | null {
   if (typeof value !== "string" || !value.trim()) {
     return null;
@@ -165,6 +171,18 @@ function toValidIso(value: unknown): string | null {
 
 function toOptionalString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value : undefined;
+}
+
+function withHiddenSyncMetadata<T extends object>(target: T, source: unknown): T {
+  const record = isRecord(source) ? source : null;
+  const updatedAt = toValidIso(record?.updatedAt) ?? new Date().toISOString();
+  const clientId = toOptionalString(record?._clientId);
+
+  return {
+    ...target,
+    updatedAt,
+    ...(clientId ? { _clientId: clientId } : {}),
+  } as T;
 }
 
 function toOptionalNumber(value: unknown): number | undefined {
@@ -306,11 +324,7 @@ function normalizePlannedRoute(value: unknown): Giorno["plannedRoute"] | undefin
   };
 }
 
-function normalizeDayPlanSegment(value: unknown): Giorno["dayPlan"] extends { segments: infer T }
-  ? T extends Array<infer S>
-    ? S | null
-    : null
-  : null {
+function normalizeDayPlanSegment(value: unknown): DayPlanSegment | null {
   if (typeof value !== "object" || value === null) {
     return null;
   }
@@ -478,7 +492,7 @@ function normalizePrenotazione(record: LegacyPrenotazioneRecord): Prenotazione |
     fornitore: toOptionalString(record.fornitore),
     localita: toOptionalString(record.localita),
     dataInizio,
-    dataFine: toValidIso(record.dataFine),
+    dataFine: toValidIso(record.dataFine) ?? undefined,
     oraInizio: toOptionalString(record.oraInizio),
     oraFine: toOptionalString(record.oraFine),
     indirizzo: toOptionalString(record.indirizzo),
@@ -616,6 +630,24 @@ async function getAllRecords<T>(storeName: StoreName): Promise<T[]> {
   const records = await requestToPromise(request);
   await transactionToPromise(transaction);
   return records as T[];
+}
+
+async function countRecords(storeName: StoreName): Promise<number> {
+  const db = await initDB();
+  const transaction = db.transaction(storeName, "readonly");
+  const request = transaction.objectStore(storeName).count();
+  const count = await requestToPromise(request);
+  await transactionToPromise(transaction);
+  return count;
+}
+
+async function getRecordByIdRaw(storeName: StoreName, id: string): Promise<unknown | undefined> {
+  const db = await initDB();
+  const transaction = db.transaction(storeName, "readonly");
+  const request = transaction.objectStore(storeName).get(id);
+  const record = await requestToPromise(request);
+  await transactionToPromise(transaction);
+  return record ?? undefined;
 }
 
 function runCloudMirrorTask(task: Promise<unknown>): void {
@@ -813,6 +845,14 @@ export async function listOutbox(): Promise<OutboxRecord[]> {
   });
 }
 
+export async function hasPendingOutboxEntry(
+  collection: CloudSyncCollectionName,
+  docId: string,
+): Promise<boolean> {
+  const records = await getAllRecords<OutboxRecord>(STORE_OUTBOX);
+  return records.some((item) => item.collection === collection && item.docId === docId);
+}
+
 export async function removeOutbox(id: string): Promise<void> {
   const db = await initDB();
   const transaction = db.transaction(STORE_OUTBOX, "readwrite");
@@ -820,9 +860,12 @@ export async function removeOutbox(id: string): Promise<void> {
   await transactionToPromise(transaction);
 }
 
-export async function saveViaggio(viaggio: Viaggio): Promise<void> {
+export async function saveViaggio(viaggio: Viaggio, opts?: CloudMirrorOptions): Promise<void> {
   const normalized = normalizeViaggio(viaggio);
-  await putRecord(STORE_VIAGGI, normalized);
+  await putRecord(STORE_VIAGGI, withHiddenSyncMetadata(normalized, viaggio));
+  if (opts?.skipCloud) {
+    return;
+  }
   runCloudMirrorTask(mirrorCloudUpsert("viaggi", normalized.id, normalized));
   runCloudMirrorTask(mirrorCloudUpsert("viaggi_index", normalized.id, buildViaggioIndexRecord(normalized)));
 }
@@ -830,6 +873,29 @@ export async function saveViaggio(viaggio: Viaggio): Promise<void> {
 export async function getViaggi(): Promise<Viaggio[]> {
   const viaggi = await getAllRecords<LegacyViaggioRecord>(STORE_VIAGGI);
   return viaggi.map((viaggio) => normalizeViaggio(viaggio));
+}
+
+export async function getViaggiRecordCount(): Promise<number> {
+  return countRecords(STORE_VIAGGI);
+}
+
+export async function getCloudSyncRecordRaw(
+  collection: RealtimeDataCollectionName,
+  docId: string,
+): Promise<Record<string, unknown> | undefined> {
+  const storeName: StoreName =
+    collection === "viaggi"
+      ? STORE_VIAGGI
+      : collection === "giorni"
+        ? STORE_GIORNI
+        : collection === "gpxFiles"
+          ? STORE_GPX_FILES
+        : collection === "prenotazioni"
+          ? STORE_PRENOTAZIONI
+          : STORE_COSTI;
+
+  const record = await getRecordByIdRaw(storeName, docId);
+  return isRecord(record) ? record : undefined;
 }
 
 export async function getViaggioById(viaggioId: string): Promise<Viaggio | undefined> {
@@ -846,9 +912,12 @@ export async function getViaggioById(viaggioId: string): Promise<Viaggio | undef
   return normalizeViaggio(rawRecord as LegacyViaggioRecord);
 }
 
-export async function saveGiorno(giorno: Giorno): Promise<void> {
+export async function saveGiorno(giorno: Giorno, opts?: CloudMirrorOptions): Promise<void> {
   const normalized = normalizeGiorno(giorno);
-  await putRecord(STORE_GIORNI, normalized);
+  await putRecord(STORE_GIORNI, withHiddenSyncMetadata(normalized, giorno));
+  if (opts?.skipCloud) {
+    return;
+  }
   runCloudMirrorTask(mirrorCloudUpsert("giorni", normalized.id, normalized));
   runCloudMirrorTask(mirrorCloudUpsert("giorni_index", normalized.id, buildGiornoIndexRecord(normalized)));
 }
@@ -874,8 +943,8 @@ export async function getGiorno(giornoId: string): Promise<Giorno | undefined> {
   return normalizeGiorno(rawRecord as LegacyGiornoRecord);
 }
 
-export async function saveGPXFile(gpxFile: GPXFile): Promise<void> {
-  await putRecord(STORE_GPX_FILES, gpxFile);
+export async function saveGPXFile(gpxFile: GPXFile, _opts?: CloudMirrorOptions): Promise<void> {
+  await putRecord(STORE_GPX_FILES, withHiddenSyncMetadata(gpxFile, gpxFile));
 }
 
 export async function getGPXFilesByGiorno(giornoId: string): Promise<GPXFile[]> {
@@ -883,7 +952,7 @@ export async function getGPXFilesByGiorno(giornoId: string): Promise<GPXFile[]> 
   return gpxFiles.filter((gpxFile) => gpxFile.giornoId === giornoId);
 }
 
-export async function deleteGPXFile(gpxFileId: string): Promise<void> {
+export async function deleteGPXFile(gpxFileId: string, _opts?: CloudMirrorOptions): Promise<void> {
   const db = await initDB();
   const transaction = db.transaction(STORE_GPX_FILES, "readwrite");
   transaction.objectStore(STORE_GPX_FILES).delete(gpxFileId);
@@ -960,21 +1029,30 @@ export async function deleteGpxFilesByGiornoId(giornoId: string): Promise<void> 
   await transactionToPromise(transaction);
 }
 
-export async function deleteGiorno(giornoId: string): Promise<void> {
+export async function deleteGiorno(giornoId: string, opts?: CloudMirrorOptions): Promise<void> {
   const db = await initDB();
   const transaction = db.transaction(STORE_GIORNI, "readwrite");
   transaction.objectStore(STORE_GIORNI).delete(giornoId);
   await transactionToPromise(transaction);
+  if (opts?.skipCloud) {
+    return;
+  }
   runCloudMirrorTask(mirrorCloudDelete("giorni", giornoId));
   runCloudMirrorTask(mirrorCloudDelete("giorni_index", giornoId));
 }
 
-export async function savePrenotazione(prenotazione: Prenotazione): Promise<void> {
+export async function savePrenotazione(
+  prenotazione: Prenotazione,
+  opts?: CloudMirrorOptions,
+): Promise<void> {
   const normalized = normalizePrenotazione(prenotazione);
   if (!normalized) {
     throw new Error("Prenotazione non valida");
   }
   await putRecord(STORE_PRENOTAZIONI, normalized);
+  if (opts?.skipCloud) {
+    return;
+  }
   runCloudMirrorTask(mirrorCloudUpsert("prenotazioni", normalized.id, normalized));
   runCloudMirrorTask(
     mirrorCloudUpsert("prenotazioni_index", normalized.id, buildPrenotazioneIndexRecord(normalized)),
@@ -1011,21 +1089,27 @@ export async function getPrenotazione(id: string): Promise<Prenotazione | undefi
   return normalizePrenotazione(rawRecord as LegacyPrenotazioneRecord) ?? undefined;
 }
 
-export async function deletePrenotazione(id: string): Promise<void> {
+export async function deletePrenotazione(id: string, opts?: CloudMirrorOptions): Promise<void> {
   const db = await initDB();
   const transaction = db.transaction(STORE_PRENOTAZIONI, "readwrite");
   transaction.objectStore(STORE_PRENOTAZIONI).delete(id);
   await transactionToPromise(transaction);
+  if (opts?.skipCloud) {
+    return;
+  }
   runCloudMirrorTask(mirrorCloudDelete("prenotazioni", id));
   runCloudMirrorTask(mirrorCloudDelete("prenotazioni_index", id));
 }
 
-export async function saveCosto(costo: Costo): Promise<void> {
+export async function saveCosto(costo: Costo, opts?: CloudMirrorOptions): Promise<void> {
   const normalized = normalizeCosto(costo);
   if (!normalized) {
     throw new Error("Costo non valido");
   }
   await putRecord(STORE_COSTI, normalized);
+  if (opts?.skipCloud) {
+    return;
+  }
   runCloudMirrorTask(mirrorCloudUpsert("costi", normalized.id, normalized));
   runCloudMirrorTask(mirrorCloudUpsert("costi_index", normalized.id, buildCostoIndexRecord(normalized)));
 }
@@ -1060,11 +1144,14 @@ export async function getCosto(id: string): Promise<Costo | undefined> {
   return normalizeCosto(rawRecord as LegacyCostoRecord) ?? undefined;
 }
 
-export async function deleteCosto(id: string): Promise<void> {
+export async function deleteCosto(id: string, opts?: CloudMirrorOptions): Promise<void> {
   const db = await initDB();
   const transaction = db.transaction(STORE_COSTI, "readwrite");
   transaction.objectStore(STORE_COSTI).delete(id);
   await transactionToPromise(transaction);
+  if (opts?.skipCloud) {
+    return;
+  }
   runCloudMirrorTask(mirrorCloudDelete("costi", id));
   runCloudMirrorTask(mirrorCloudDelete("costi_index", id));
 }
@@ -1179,7 +1266,7 @@ function validateBackupPayload(payload: unknown): BackupPayload {
     }
   }
 
-  return payload as BackupPayload;
+  return payload as unknown as BackupPayload;
 }
 
 export async function restoreFromBackupJSON(payload: BackupPayload): Promise<void> {
@@ -1216,29 +1303,35 @@ export async function restoreFromBackupJSON(payload: BackupPayload): Promise<voi
   await transactionToPromise(transaction);
 }
 
-export async function deleteViaggioCascade(viaggioId: string): Promise<void> {
+export async function deleteViaggioCascade(
+  viaggioId: string,
+  opts?: CloudMirrorOptions,
+): Promise<void> {
   const giorni = await getGiorniByViaggio(viaggioId);
 
   for (const giorno of giorni) {
     await deleteTrackPointsByGiornoId(giorno.id);
     await deleteGpxFilesByGiornoId(giorno.id);
-    await deleteGiorno(giorno.id);
+    await deleteGiorno(giorno.id, opts);
   }
 
   const prenotazioni = await getPrenotazioniByViaggio(viaggioId);
   for (const prenotazione of prenotazioni) {
-    await deletePrenotazione(prenotazione.id);
+    await deletePrenotazione(prenotazione.id, opts);
   }
 
   const costi = await getCostiByViaggio(viaggioId);
   for (const costo of costi) {
-    await deleteCosto(costo.id);
+    await deleteCosto(costo.id, opts);
   }
 
   const db = await initDB();
   const transaction = db.transaction(STORE_VIAGGI, "readwrite");
   transaction.objectStore(STORE_VIAGGI).delete(viaggioId);
   await transactionToPromise(transaction);
+  if (opts?.skipCloud) {
+    return;
+  }
   runCloudMirrorTask(mirrorCloudDelete("viaggi", viaggioId));
   runCloudMirrorTask(mirrorCloudDelete("viaggi_index", viaggioId));
 }
