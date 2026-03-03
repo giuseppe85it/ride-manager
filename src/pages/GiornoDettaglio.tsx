@@ -1035,6 +1035,46 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
     setPlannerSearch(null);
   }
 
+  async function requestRideRoute(
+    segmentId: string,
+    originText: string,
+    destinationText: string,
+    modeRequested: "direct" | "curvy",
+  ): Promise<RouteApiSuccessResponse> {
+    const response = await fetch("/api/route", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        originText,
+        destinationText,
+        mode: modeRequested,
+      }),
+    });
+
+    const payload = (await response.json().catch(() => null)) as
+      | RouteApiSuccessResponse
+      | RouteApiErrorResponse
+      | null;
+    if (!response.ok || !isRouteApiSuccessResponse(payload)) {
+      const message =
+        typeof (payload as RouteApiErrorResponse | null)?.error === "string"
+          ? (payload as RouteApiErrorResponse).error
+          : "Errore calcolo tratta (verifica Partenza/Arrivo)";
+      console.error("requestRideRoute /api/route failed", {
+        status: response.status,
+        segmentId,
+        originText,
+        destinationText,
+        payload,
+      });
+      throw new Error(message);
+    }
+
+    return payload;
+  }
+
   async function handleCalculateRideSegment(segmentId: string): Promise<void> {
     const currentDayPlan = giorno?.dayPlan;
     if (!giorno || !currentDayPlan) {
@@ -1068,36 +1108,12 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
     setError(null);
 
     try {
-      const response = await fetch("/api/route", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          originText: originTextTrimmed,
-          destinationText: destinationTextTrimmed,
-          mode: segment.modeRequested,
-        }),
-      });
-
-      const payload = (await response.json().catch(() => null)) as
-        | RouteApiSuccessResponse
-        | RouteApiErrorResponse
-        | null;
-      if (!response.ok || !isRouteApiSuccessResponse(payload)) {
-        const message =
-          typeof (payload as RouteApiErrorResponse | null)?.error === "string"
-            ? (payload as RouteApiErrorResponse).error
-            : "Errore calcolo tratta (verifica Partenza/Arrivo)";
-        console.error("handleCalculateRideSegment /api/route failed", {
-          status: response.status,
-          segmentId,
-          originText: originTextTrimmed,
-          destinationText: destinationTextTrimmed,
-          payload,
-        });
-        throw new Error(message);
-      }
+      const payload = await requestRideRoute(
+        segmentId,
+        originTextTrimmed,
+        destinationTextTrimmed,
+        segment.modeRequested,
+      );
 
       const nextDayPlan: DayPlan = {
         ...currentDayPlan,
@@ -1130,6 +1146,97 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
       setError(message);
     } finally {
       setIsGeneratingRoute(false);
+    }
+  }
+
+  async function ensureRideGeometryBeforeExitEdit(): Promise<boolean> {
+    const currentDayPlan = giorno?.dayPlan;
+    if (!giorno || !currentDayPlan) {
+      return true;
+    }
+
+    const missingGeometryRideSegments = currentDayPlan.segments.filter(
+      (segment): segment is RideSegment =>
+        segment.type === "RIDE" && (!Array.isArray(segment.geometry) || segment.geometry.length < 2),
+    );
+    if (missingGeometryRideSegments.length === 0) {
+      return true;
+    }
+
+    setIsGeneratingRoute(true);
+    setError(null);
+    setRideSegmentUiError(null);
+
+    try {
+      let nextSegments = [...currentDayPlan.segments];
+
+      for (const segment of missingGeometryRideSegments) {
+        const originTextTrimmed = segment.originText.trim();
+        const destinationTextTrimmed = segment.destinationText.trim();
+
+        if (!originTextTrimmed || !destinationTextTrimmed) {
+          const message =
+            "Completa Partenza e Arrivo delle tratte moto prima di uscire da Modifica.";
+          setRideSegmentUiError({ segmentId: segment.id, message });
+          setError(message);
+          return false;
+        }
+
+        const payload = await requestRideRoute(
+          segment.id,
+          originTextTrimmed,
+          destinationTextTrimmed,
+          segment.modeRequested,
+        );
+
+        nextSegments = nextSegments.map((item) =>
+          item.id !== segment.id || item.type !== "RIDE"
+            ? item
+            : {
+                ...item,
+                originText: payload.originResolved.displayName,
+                destinationText: payload.destinationResolved.displayName,
+                modeRequested: payload.modeRequested,
+                modeApplied: payload.modeApplied,
+                distanceKm: payload.distanceKm,
+                durationMin: payload.durationMin,
+                geometry: payload.geometry,
+              },
+        );
+      }
+
+      const nextDayPlan: DayPlan = {
+        ...currentDayPlan,
+        updatedAt: new Date().toISOString(),
+        segments: nextSegments,
+      };
+
+      await saveDayPlan(nextDayPlan);
+      setPlannerSearch(null);
+      setRideSegmentUiError(null);
+      setError(null);
+      return true;
+    } catch (routeError) {
+      const message =
+        routeError instanceof Error
+          ? routeError.message
+          : "Errore calcolo tratta (verifica Partenza/Arrivo)";
+      setError(message);
+      return false;
+    } finally {
+      setIsGeneratingRoute(false);
+    }
+  }
+
+  async function handleEditModeToggle(): Promise<void> {
+    if (!isEditMode) {
+      setIsEditMode(true);
+      return;
+    }
+
+    const canExitEditMode = await ensureRideGeometryBeforeExitEdit();
+    if (canExitEditMode) {
+      setIsEditMode(false);
     }
   }
 
@@ -1546,9 +1653,10 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
           <button
             type="button"
             className={isEditMode ? "buttonPrimary" : "buttonGhost"}
-            onClick={() => setIsEditMode((current) => !current)}
+            onClick={() => void handleEditModeToggle()}
+            disabled={isEditMode && isGeneratingRoute}
           >
-            {isEditMode ? "Fine" : "Modifica"}
+            {isEditMode ? (isGeneratingRoute ? "Calcolo..." : "Fine") : "Modifica"}
           </button>
         </div>
         {import.meta.env.DEV && (
