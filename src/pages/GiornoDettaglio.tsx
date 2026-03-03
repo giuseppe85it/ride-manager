@@ -448,7 +448,10 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
   const [plannerSearch, setPlannerSearch] = useState<PlannerSearchState | null>(null);
   const [rideSegmentUiError, setRideSegmentUiError] = useState<{ segmentId: string; message: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [autoGeometrySegmentId, setAutoGeometrySegmentId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const autoGeometryInFlightSegmentIdsRef = useRef<Set<string>>(new Set());
+  const autoGeometryTriedSegmentIdsRef = useRef<Set<string>>(new Set());
 
   async function reloadDataForDay(targetGiornoId: string): Promise<void> {
     const [gpxRecords, pointRecords, giornoRecord] = await Promise.all([
@@ -556,6 +559,12 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
     return () => {
       isActive = false;
     };
+  }, [giornoId]);
+
+  useEffect(() => {
+    autoGeometryInFlightSegmentIdsRef.current.clear();
+    autoGeometryTriedSegmentIdsRef.current.clear();
+    setAutoGeometrySegmentId(null);
   }, [giornoId]);
 
   useEffect(() => {
@@ -1149,95 +1158,26 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
     }
   }
 
-  async function ensureRideGeometryBeforeExitEdit(): Promise<boolean> {
-    const currentDayPlan = giorno?.dayPlan;
-    if (!giorno || !currentDayPlan) {
-      return true;
-    }
-
-    const missingGeometryRideSegments = currentDayPlan.segments.filter(
-      (segment): segment is RideSegment =>
-        segment.type === "RIDE" && (!Array.isArray(segment.geometry) || segment.geometry.length < 2),
-    );
-    if (missingGeometryRideSegments.length === 0) {
-      return true;
-    }
-
-    setIsGeneratingRoute(true);
-    setError(null);
-    setRideSegmentUiError(null);
-
-    try {
-      let nextSegments = [...currentDayPlan.segments];
-
-      for (const segment of missingGeometryRideSegments) {
-        const originTextTrimmed = segment.originText.trim();
-        const destinationTextTrimmed = segment.destinationText.trim();
-
-        if (!originTextTrimmed || !destinationTextTrimmed) {
-          const message =
-            "Completa Partenza e Arrivo delle tratte moto prima di uscire da Modifica.";
-          setRideSegmentUiError({ segmentId: segment.id, message });
-          setError(message);
-          return false;
-        }
-
-        const payload = await requestRideRoute(
-          segment.id,
-          originTextTrimmed,
-          destinationTextTrimmed,
-          segment.modeRequested,
-        );
-
-        nextSegments = nextSegments.map((item) =>
-          item.id !== segment.id || item.type !== "RIDE"
-            ? item
-            : {
-                ...item,
-                originText: payload.originResolved.displayName,
-                destinationText: payload.destinationResolved.displayName,
-                modeRequested: payload.modeRequested,
-                modeApplied: payload.modeApplied,
-                distanceKm: payload.distanceKm,
-                durationMin: payload.durationMin,
-                geometry: payload.geometry,
-              },
-        );
-      }
-
-      const nextDayPlan: DayPlan = {
-        ...currentDayPlan,
-        updatedAt: new Date().toISOString(),
-        segments: nextSegments,
-      };
-
-      await saveDayPlan(nextDayPlan);
-      setPlannerSearch(null);
-      setRideSegmentUiError(null);
-      setError(null);
-      return true;
-    } catch (routeError) {
-      const message =
-        routeError instanceof Error
-          ? routeError.message
-          : "Errore calcolo tratta (verifica Partenza/Arrivo)";
-      setError(message);
-      return false;
-    } finally {
-      setIsGeneratingRoute(false);
-    }
-  }
-
   async function handleEditModeToggle(): Promise<void> {
     if (!isEditMode) {
       setIsEditMode(true);
       return;
     }
 
-    const canExitEditMode = await ensureRideGeometryBeforeExitEdit();
-    if (canExitEditMode) {
-      setIsEditMode(false);
+    const currentDayPlan = giorno?.dayPlan;
+    if (currentDayPlan) {
+      const missingDataSegments = currentDayPlan.segments.filter(
+        (segment): segment is RideSegment =>
+          segment.type === "RIDE" &&
+          (!Array.isArray(segment.geometry) || segment.geometry.length < 2) &&
+          (!segment.originText.trim() || !segment.destinationText.trim()),
+      );
+      if (missingDataSegments.length > 0) {
+        setError("Alcune tratte non hanno Partenza/Arrivo: completa i dati da Modifica per generare la mini-mappa.");
+      }
     }
+
+    setIsEditMode(false);
   }
 
   function handleOpenRideSegmentNavigation(segmentId: string): void {
@@ -1642,6 +1582,51 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
       : null;
   const hasPlannedMapsLink = Boolean(giorno?.plannedMapsUrl && giorno.plannedMapsUrl.trim().length > 0);
 
+  useEffect(() => {
+    if (isEditMode) {
+      return;
+    }
+
+    const currentDayPlan = giorno?.dayPlan;
+    if (!currentDayPlan || autoGeometryInFlightSegmentIdsRef.current.size > 0) {
+      return;
+    }
+
+    const nextSegmentToCalculate = currentDayPlan.segments.find(
+      (segment): segment is RideSegment =>
+        segment.type === "RIDE" &&
+        (!Array.isArray(segment.geometry) || segment.geometry.length < 2) &&
+        segment.originText.trim().length > 0 &&
+        segment.destinationText.trim().length > 0 &&
+        !autoGeometryTriedSegmentIdsRef.current.has(segment.id) &&
+        !autoGeometryInFlightSegmentIdsRef.current.has(segment.id),
+    );
+
+    if (!nextSegmentToCalculate) {
+      return;
+    }
+
+    autoGeometryTriedSegmentIdsRef.current.add(nextSegmentToCalculate.id);
+    autoGeometryInFlightSegmentIdsRef.current.add(nextSegmentToCalculate.id);
+    setAutoGeometrySegmentId(nextSegmentToCalculate.id);
+
+    let isCancelled = false;
+    void (async () => {
+      try {
+        await handleCalculateRideSegment(nextSegmentToCalculate.id);
+      } finally {
+        autoGeometryInFlightSegmentIdsRef.current.delete(nextSegmentToCalculate.id);
+        if (!isCancelled) {
+          setAutoGeometrySegmentId((current) => (current === nextSegmentToCalculate.id ? null : current));
+        }
+      }
+    })();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [isEditMode, giorno?.dayPlan, autoGeometrySegmentId]);
+
   return (
     <main className="pageWrap">
       <div className="pageContainer">
@@ -1654,9 +1639,8 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
             type="button"
             className={isEditMode ? "buttonPrimary" : "buttonGhost"}
             onClick={() => void handleEditModeToggle()}
-            disabled={isEditMode && isGeneratingRoute}
           >
-            {isEditMode ? (isGeneratingRoute ? "Calcolo..." : "Fine") : "Modifica"}
+            {isEditMode ? "Fine" : "Modifica"}
           </button>
         </div>
         {import.meta.env.DEV && (
@@ -1696,6 +1680,11 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
                 {viewSegments.map((segment, index) => {
                   if (segment.type === "RIDE") {
                     const rideThumbnailUrl = buildRideThumbnailUrl(segment);
+                    const hasRideGeometry = Boolean(rideThumbnailUrl);
+                    const hasRideInputs = segment.originText.trim().length > 0 && segment.destinationText.trim().length > 0;
+                    const isAutoGeneratingMiniMap =
+                      autoGeometrySegmentId === segment.id ||
+                      autoGeometryInFlightSegmentIdsRef.current.has(segment.id);
                     return (
                       <div key={segment.id} className="card detailCard" style={{ padding: "0.75rem" }}>
                         <div
@@ -1712,24 +1701,31 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
                             <span className="badge">RIDE</span>
                             <strong>Tratta {index + 1}</strong>
                           </div>
-                          {rideThumbnailUrl ? (
-                            <button
-                              type="button"
-                              onClick={() => handleOpenRideSegmentNavigation(segment.id)}
-                              style={{
-                                border: "1px solid #2A3445",
-                                background: "transparent",
-                                padding: 0,
-                                borderRadius: 10,
-                                overflow: "hidden",
-                                cursor: "pointer",
-                                lineHeight: 0,
-                              }}
-                              aria-label="Apri navigazione"
-                              title="Apri navigazione"
-                            >
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (hasRideGeometry) {
+                                handleOpenRideSegmentNavigation(segment.id);
+                                return;
+                              }
+                              setIsEditMode(true);
+                            }}
+                            style={{
+                              border: "1px solid #2A3445",
+                              background: "transparent",
+                              padding: 0,
+                              borderRadius: 10,
+                              overflow: "hidden",
+                              cursor: "pointer",
+                              width: 160,
+                              height: 90,
+                            }}
+                            aria-label={hasRideGeometry ? "Apri navigazione" : "Apri modifica tratta"}
+                            title={hasRideGeometry ? "Apri navigazione" : "Apri modifica tratta"}
+                          >
+                            {hasRideGeometry ? (
                               <img
-                                src={rideThumbnailUrl}
+                                src={rideThumbnailUrl ?? undefined}
                                 alt={`Mini mappa ${buildRideSummaryLabel(segment.originText, segment.destinationText)}`}
                                 width={160}
                                 height={90}
@@ -1737,16 +1733,29 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
                                 decoding="async"
                                 style={{ display: "block", width: 160, height: 90, objectFit: "cover" }}
                               />
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              className="buttonPrimary"
-                              onClick={() => handleOpenRideSegmentNavigation(segment.id)}
-                            >
-                              VAI
-                            </button>
-                          )}
+                            ) : (
+                              <div
+                                style={{
+                                  width: "100%",
+                                  height: "100%",
+                                  display: "grid",
+                                  placeItems: "center",
+                                  padding: "0.45rem",
+                                  background: "rgba(148,163,184,0.12)",
+                                  color: "#BFD4F4",
+                                  fontSize: "0.75rem",
+                                  lineHeight: 1.2,
+                                  textAlign: "center",
+                                }}
+                              >
+                                {hasRideInputs
+                                  ? isAutoGeneratingMiniMap
+                                    ? "Generazione mini-mappa..."
+                                    : "Generazione mini-mappa..."
+                                  : "Completa dati in Modifica"}
+                              </div>
+                            )}
+                          </button>
                         </div>
                         <p style={{ margin: "0 0 0.25rem 0", fontWeight: 600 }}>
                           {buildRideSummaryLabel(segment.originText, segment.destinationText)}

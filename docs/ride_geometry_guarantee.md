@@ -1,21 +1,29 @@
-# Ride Geometry Guarantee (exit EDIT)
+# Ride Geometry Guarantee (VIEW auto-generate, no edit blocks)
+
+## Prima vs ora
+- Prima: il calcolo geometry avveniva su `Fine` in EDIT e poteva bloccare l'uscita.
+- Ora: `Fine` **non blocca mai**. L'uscita da EDIT e' sempre immediata.
+- La geometry mancante viene generata in VIEW con `useEffect` controllato.
 
 ## Quando viene calcolata `geometry`
-- In `GiornoDettaglio`, al click su `Fine` (uscita da EDIT), il codice controlla tutti i segmenti `RIDE`.
-- Per ogni `RIDE` con `geometry` assente o con meno di 2 punti, viene chiamato il calcolo route esistente (`/api/route`), lo stesso flusso usato da `Calcola tratta`.
-- Se il calcolo riesce, il segmento viene aggiornato con:
+- In VIEW mode (`!isEditMode`), un effetto cerca segmenti `RIDE` con:
+  - `geometry` assente/invalida
+  - `originText` e `destinationText` valorizzati
+- Per i segmenti idonei usa la logica esistente di calcolo route (`/api/route`), la stessa di `Calcola tratta`.
+- Quando il calcolo riesce, il segmento viene aggiornato con:
   - `originText` / `destinationText` risolti
   - `modeRequested` / `modeApplied`
   - `distanceKm`, `durationMin`, `geometry`
 
-## Comportamento se mancano dati
-- UX scelta: **bloccare l'uscita da EDIT**.
-- Se una tratta `RIDE` senza `geometry` non ha `Partenza` o `Arrivo`, l'app mostra errore chiaro:
-  - "Completa Partenza e Arrivo delle tratte moto prima di uscire da Modifica."
-- In questo caso resta in EDIT mode, cosi l'utente puo correggere subito e garantire la thumbnail in VIEW.
+## Cosa succede se mancano dati
+- Se un `RIDE` non ha `origin/destination`, in VIEW non parte nessuna chiamata.
+- La card mostra placeholder con testo `Completa dati in Modifica`.
+- Click sulla mini-area senza geometry apre EDIT mode.
+- Al click su `Fine`, se esistono tratte senza dati viene mostrato warning non bloccante.
 
-## Come evitare chiamate inutili
-- Il controllo parte solo quando si clicca `Fine` (mai in VIEW render).
-- Vengono calcolate solo le tratte `RIDE` con `geometry` mancante/invalida.
-- Le tratte gia calcolate non vengono ricalcolate.
-- Le richieste sono sequenziali e salvate in un unico update finale del `dayPlan`.
+## Anti-loop e chiamate inutili
+- Nessuna chiamata API in render.
+- Effetto VIEW con massimo 1 calcolo in corso (sequenziale).
+- `inFlightSegmentIds` evita duplicati concorrenti.
+- `triedSegmentIds` garantisce tentativo una sola volta per segmento nella sessione corrente.
+- Segmenti gia' con geometry non vengono ricalcolati.
