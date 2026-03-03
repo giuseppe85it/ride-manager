@@ -185,6 +185,63 @@ function buildRideSummaryLabel(originText: string, destinationText: string): str
   return "Tratta";
 }
 
+function sampleRideGeometryForThumbnail(
+  geometry: NonNullable<RideSegment["geometry"]>,
+  maxPoints = 20,
+): NonNullable<RideSegment["geometry"]> {
+  if (geometry.length <= maxPoints) {
+    return geometry;
+  }
+
+  const sampled: NonNullable<RideSegment["geometry"]> = [];
+  const lastIndex = geometry.length - 1;
+  for (let index = 0; index < maxPoints; index += 1) {
+    const sourceIndex = Math.round((index * lastIndex) / (maxPoints - 1));
+    const point = geometry[sourceIndex];
+    if (!point) {
+      continue;
+    }
+    const previous = sampled[sampled.length - 1];
+    if (previous && previous.lat === point.lat && previous.lon === point.lon) {
+      continue;
+    }
+    sampled.push(point);
+  }
+
+  return sampled.length >= 2 ? sampled : geometry;
+}
+
+function buildRideThumbnailUrl(segment: RideSegment): string | null {
+  if (!Array.isArray(segment.geometry) || segment.geometry.length < 2) {
+    return null;
+  }
+
+  const sampledGeometry = sampleRideGeometryForThumbnail(segment.geometry);
+  const path = sampledGeometry
+    .map((point) => `${point.lat.toFixed(6)},${point.lon.toFixed(6)}`)
+    .join("|");
+  if (!path) {
+    return null;
+  }
+
+  const params = new URLSearchParams();
+  params.set("w", "320");
+  params.set("h", "180");
+  params.set("path", path);
+
+  const origin = segment.originText.trim();
+  if (origin) {
+    params.set("origin", origin);
+  }
+
+  const destination = segment.destinationText.trim();
+  if (destination) {
+    params.set("destination", destination);
+  }
+
+  return `/api/google/thumbnail?${params.toString()}`;
+}
+
 function createEmptyDayPlan(): DayPlan {
   const nowIso = new Date().toISOString();
   return {
@@ -1530,6 +1587,7 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
               <div style={{ display: "grid", gap: "0.75rem" }}>
                 {viewSegments.map((segment, index) => {
                   if (segment.type === "RIDE") {
+                    const rideThumbnailUrl = buildRideThumbnailUrl(segment);
                     return (
                       <div key={segment.id} className="card detailCard" style={{ padding: "0.75rem" }}>
                         <div
@@ -1546,13 +1604,41 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
                             <span className="badge">RIDE</span>
                             <strong>Tratta {index + 1}</strong>
                           </div>
-                          <button
-                            type="button"
-                            className="buttonPrimary"
-                            onClick={() => handleOpenRideSegmentNavigation(segment.id)}
-                          >
-                            VAI
-                          </button>
+                          {rideThumbnailUrl ? (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenRideSegmentNavigation(segment.id)}
+                              style={{
+                                border: "1px solid #2A3445",
+                                background: "transparent",
+                                padding: 0,
+                                borderRadius: 10,
+                                overflow: "hidden",
+                                cursor: "pointer",
+                                lineHeight: 0,
+                              }}
+                              aria-label="Apri navigazione"
+                              title="Apri navigazione"
+                            >
+                              <img
+                                src={rideThumbnailUrl}
+                                alt={`Mini mappa ${buildRideSummaryLabel(segment.originText, segment.destinationText)}`}
+                                width={160}
+                                height={90}
+                                loading="lazy"
+                                decoding="async"
+                                style={{ display: "block", width: 160, height: 90, objectFit: "cover" }}
+                              />
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              className="buttonPrimary"
+                              onClick={() => handleOpenRideSegmentNavigation(segment.id)}
+                            >
+                              VAI
+                            </button>
+                          )}
                         </div>
                         <p style={{ margin: "0 0 0.25rem 0", fontWeight: 600 }}>
                           {buildRideSummaryLabel(segment.originText, segment.destinationText)}
