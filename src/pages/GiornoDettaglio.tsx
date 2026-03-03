@@ -155,6 +155,36 @@ function generatePlanSegmentId(prefix = "segment"): string {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 }
 
+function pickFirstNonEmpty(values: Array<string | undefined>): string | null {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value.trim();
+    }
+  }
+  return null;
+}
+
+function compactStopLabel(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return "";
+  }
+  const firstChunk = trimmed.split(",")[0]?.trim() ?? trimmed;
+  if (firstChunk.length <= 22) {
+    return firstChunk;
+  }
+  return `${firstChunk.slice(0, 21)}…`;
+}
+
+function buildRideSummaryLabel(originText: string, destinationText: string): string {
+  const origin = compactStopLabel(originText);
+  const destination = compactStopLabel(destinationText);
+  if (origin && destination) {
+    return `${origin} → ${destination}`;
+  }
+  return "Tratta";
+}
+
 function createEmptyDayPlan(): DayPlan {
   const nowIso = new Date().toISOString();
   return {
@@ -349,6 +379,7 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
   const [isSearchingOrigin, setIsSearchingOrigin] = useState(false);
   const [isSearchingDestination, setIsSearchingDestination] = useState(false);
   const [routeMode, setRouteMode] = useState<"direct" | "curvy">("direct");
+  const [isEditMode, setIsEditMode] = useState(false);
   const [originText, setOriginText] = useState("");
   const [destinationText, setDestinationText] = useState("");
   const [plannedMapsUrlDraft, setPlannedMapsUrlDraft] = useState("");
@@ -1077,6 +1108,63 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
     setError(null);
   }
 
+  function buildFerryNavigationUrl(segment: FerrySegment, ferryBooking: Prenotazione | null): string | null {
+    const departure = pickFirstNonEmpty([
+      ferryBooking?.portoPartenza,
+      segment.departPortText,
+      ferryBooking?.localita,
+      ferryBooking?.titolo,
+    ]);
+    const arrival = pickFirstNonEmpty([
+      ferryBooking?.portoArrivo,
+      segment.arrivePortText,
+    ]);
+
+    if (departure && arrival) {
+      return (
+        "https://www.google.com/maps/dir/?api=1" +
+        `&origin=${encodeURIComponent(departure)}` +
+        `&destination=${encodeURIComponent(arrival)}` +
+        "&travelmode=driving"
+      );
+    }
+
+    const query = departure ?? arrival;
+    if (!query) {
+      return null;
+    }
+
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+  }
+
+  function handleOpenFerrySegmentNavigation(segmentId: string): void {
+    const currentDayPlan = giorno?.dayPlan;
+    if (!currentDayPlan) {
+      setError("Planner giorno non disponibile.");
+      return;
+    }
+
+    const segment = currentDayPlan.segments.find(
+      (item): item is FerrySegment => item.id === segmentId && item.type === "FERRY",
+    );
+    if (!segment) {
+      setError("Segmento traghetto non trovato.");
+      return;
+    }
+
+    const ferryBooking = segment.prenotazioneId
+      ? (ferryPrenotazioniById.get(segment.prenotazioneId) ?? null)
+      : null;
+    const targetUrl = buildFerryNavigationUrl(segment, ferryBooking);
+    if (!targetUrl) {
+      setError("Mancano dati porto per avviare la navigazione traghetto.");
+      return;
+    }
+
+    window.open(targetUrl, "_blank", "noopener,noreferrer");
+    setError(null);
+  }
+
   const orderedTrackPoints = useMemo(() => {
     return trackPoints
       .map((trackPoint) => ({
@@ -1383,6 +1471,12 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
         .map((segment) => segment.geometry as NonNullable<RideSegment["geometry"]>),
     [dayPlan],
   );
+  const viewSegments = dayPlan?.segments ?? [];
+  const fallbackRideLabel =
+    giorno?.plannedOriginText && giorno?.plannedDestinationText
+      ? buildRideSummaryLabel(giorno.plannedOriginText, giorno.plannedDestinationText)
+      : null;
+  const hasPlannedMapsLink = Boolean(giorno?.plannedMapsUrl && giorno.plannedMapsUrl.trim().length > 0);
 
   return (
     <main className="pageWrap">
@@ -1392,6 +1486,13 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
             {"\u2190"} Dettaglio viaggio
           </button>
           <h1 className="pageTitle">Giorno dettaglio</h1>
+          <button
+            type="button"
+            className={isEditMode ? "buttonPrimary" : "buttonGhost"}
+            onClick={() => setIsEditMode((current) => !current)}
+          >
+            {isEditMode ? "Fine" : "Modifica"}
+          </button>
         </div>
         {import.meta.env.DEV && (
           <p className="metaText" style={{ margin: "0 0 0.75rem 0" }}>
@@ -1399,6 +1500,140 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
           </p>
         )}
 
+        {!isEditMode && (
+          <div className="card detailCard" style={{ marginBottom: "1rem" }}>
+            <h2 style={{ margin: "0 0 0.7rem 0" }}>Sequenza giornata</h2>
+            {viewSegments.length === 0 ? (
+              <div style={{ display: "grid", gap: "0.5rem" }}>
+                {fallbackRideLabel ? (
+                  <p className="metaText" style={{ margin: 0 }}>
+                    {fallbackRideLabel}
+                  </p>
+                ) : hasPlannedMapsLink ? (
+                  <p className="metaText" style={{ margin: 0 }}>
+                    Link Google Maps disponibile per questo giorno.
+                  </p>
+                ) : (
+                  <p className="metaText" style={{ margin: 0 }}>
+                    Nessuna sequenza presente. Usa Modifica per aggiungere tratte, traghetti e hotel.
+                  </p>
+                )}
+                {hasPlannedMapsLink && (
+                  <div>
+                    <button type="button" className="buttonPrimary" onClick={handleOpenPlannedMap}>
+                      VAI (Google Maps)
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div style={{ display: "grid", gap: "0.75rem" }}>
+                {viewSegments.map((segment, index) => {
+                  if (segment.type === "RIDE") {
+                    return (
+                      <div key={segment.id} className="card detailCard" style={{ padding: "0.75rem" }}>
+                        <div
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            gap: "0.6rem",
+                            flexWrap: "wrap",
+                            marginBottom: "0.45rem",
+                          }}
+                        >
+                          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
+                            <span className="badge">RIDE</span>
+                            <strong>Tratta {index + 1}</strong>
+                          </div>
+                          <button
+                            type="button"
+                            className="buttonPrimary"
+                            onClick={() => handleOpenRideSegmentNavigation(segment.id)}
+                          >
+                            VAI
+                          </button>
+                        </div>
+                        <p style={{ margin: "0 0 0.25rem 0", fontWeight: 600 }}>
+                          {buildRideSummaryLabel(segment.originText, segment.destinationText)}
+                        </p>
+                        <p className="metaText" style={{ margin: "0 0 0.2rem 0" }}>
+                          Partenza: {segment.originText.trim() || "\u2014"}
+                        </p>
+                        <p className="metaText" style={{ margin: 0 }}>
+                          Arrivo: {segment.destinationText.trim() || "\u2014"}
+                        </p>
+                        {(typeof segment.distanceKm === "number" || typeof segment.durationMin === "number") && (
+                          <p className="metaText" style={{ margin: "0.35rem 0 0 0" }}>
+                            {typeof segment.distanceKm === "number" ? `${segment.distanceKm.toFixed(2)} km` : "\u2014"}
+                            {" - "}
+                            {typeof segment.durationMin === "number" ? `${segment.durationMin.toFixed(1)} min` : "\u2014"}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  }
+
+                  const ferryBooking = segment.prenotazioneId
+                    ? (ferryPrenotazioniById.get(segment.prenotazioneId) ?? null)
+                    : null;
+                  const ferryCompany = pickFirstNonEmpty([ferryBooking?.compagnia, segment.company]);
+                  const ferryDeparture = pickFirstNonEmpty([ferryBooking?.portoPartenza, segment.departPortText]);
+                  const ferryArrival = pickFirstNonEmpty([ferryBooking?.portoArrivo, segment.arrivePortText]);
+                  const ferryDepartureTime = pickFirstNonEmpty([ferryBooking?.oraInizio]);
+                  const ferryArrivalTime = pickFirstNonEmpty([ferryBooking?.oraFine]);
+                  const ferryNavUrl = buildFerryNavigationUrl(segment, ferryBooking);
+
+                  return (
+                    <div key={segment.id} className="card detailCard" style={{ padding: "0.75rem" }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          gap: "0.6rem",
+                          flexWrap: "wrap",
+                          marginBottom: "0.45rem",
+                        }}
+                      >
+                        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
+                          <span className="badge" style={{ borderColor: "#E11D48", color: "#E11D48" }}>
+                            FERRY
+                          </span>
+                          <strong>Traghetto {index + 1}</strong>
+                        </div>
+                        <button
+                          type="button"
+                          className="buttonPrimary"
+                          onClick={() => handleOpenFerrySegmentNavigation(segment.id)}
+                          disabled={!ferryNavUrl}
+                        >
+                          VAI
+                        </button>
+                      </div>
+
+                      <p className="metaText" style={{ margin: "0 0 0.2rem 0" }}>
+                        Prenotazione: {ferryBooking?.titolo ?? "\u2014"}
+                      </p>
+                      <p className="metaText" style={{ margin: "0 0 0.2rem 0" }}>
+                        Compagnia: {ferryCompany ?? "\u2014"}
+                      </p>
+                      <p className="metaText" style={{ margin: "0 0 0.2rem 0" }}>
+                        Porto: {ferryDeparture ?? "\u2014"} {"\u2192"} {ferryArrival ?? "\u2014"}
+                      </p>
+                      <p className="metaText" style={{ margin: 0 }}>
+                        Orari: {ferryDepartureTime ?? "\u2014"} {"\u2192"} {ferryArrivalTime ?? "\u2014"}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {isEditMode && (
+          <>
         <div className="card detailCard" style={{ marginBottom: "1rem" }}>
           <h2 style={{ margin: "0 0 0.6rem 0" }}>Pianificazione (Google Maps)</h2>
           <p className="metaText" style={{ margin: "0 0 0.6rem 0" }}>
@@ -2083,6 +2318,8 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
           </div>
         </details>
         </details>
+          </>
+        )}
 
         {hotelPrenotazione && (
           <div className="card detailCard" style={{ marginBottom: "1rem" }}>

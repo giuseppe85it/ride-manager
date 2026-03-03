@@ -44,6 +44,61 @@ function statoGiornoLabel(stato: Giorno["stato"]): string {
   return "Fatto";
 }
 
+function compactStopLabel(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  const firstChunk = trimmed.split(",")[0]?.trim() ?? trimmed;
+  if (firstChunk.length <= 18) {
+    return firstChunk;
+  }
+
+  return `${firstChunk.slice(0, 17)}…`;
+}
+
+function buildRidePillLabel(originText?: string, destinationText?: string): string {
+  const origin = typeof originText === "string" ? compactStopLabel(originText) : "";
+  const destination = typeof destinationText === "string" ? compactStopLabel(destinationText) : "";
+
+  if (origin && destination) {
+    return `${origin}→${destination}`;
+  }
+
+  return "Tratta";
+}
+
+function buildSequenceSummary(giorno: Giorno): string[] {
+  const pills: string[] = [];
+  const segments = giorno.dayPlan?.segments;
+
+  if (Array.isArray(segments) && segments.length > 0) {
+    for (const segment of segments) {
+      if (segment.type === "RIDE") {
+        pills.push(buildRidePillLabel(segment.originText, segment.destinationText));
+      } else {
+        pills.push("Traghetto");
+      }
+    }
+  } else {
+    const origin = typeof giorno.plannedOriginText === "string" ? compactStopLabel(giorno.plannedOriginText) : "";
+    const destination =
+      typeof giorno.plannedDestinationText === "string" ? compactStopLabel(giorno.plannedDestinationText) : "";
+    if (origin && destination) {
+      pills.push(`${origin}→${destination}`);
+    } else if (typeof giorno.plannedMapsUrl === "string" && giorno.plannedMapsUrl.trim()) {
+      pills.push("Link Maps");
+    }
+  }
+
+  if (giorno.hotelPrenotazioneId) {
+    pills.push("Hotel");
+  }
+
+  return pills;
+}
+
 export default function Giorni({ viaggioId, onBack, onOpenGiorno, embedded = false }: GiorniProps) {
   const [giorni, setGiorni] = useState<Giorno[]>([]);
   const [data, setData] = useState(todayDate());
@@ -292,6 +347,9 @@ export default function Giorni({ viaggioId, onBack, onOpenGiorno, embedded = fal
           {giorniSorted.map((giorno, index) => {
             const hotelDelGiorno =
               giorno.hotelPrenotazioneId ? hotelById.get(giorno.hotelPrenotazioneId) : undefined;
+            const sequenceSummary = buildSequenceSummary(giorno);
+            const visibleSummaryPills = sequenceSummary.slice(0, 3);
+            const hiddenSummaryCount = Math.max(0, sequenceSummary.length - visibleSummaryPills.length);
             return (
               <li
                 key={giorno.id}
@@ -491,6 +549,42 @@ export default function Giorni({ viaggioId, onBack, onOpenGiorno, embedded = fal
                     <p className="metaText" style={{ margin: 0 }}>
                       Hotel: {hotelDelGiorno.titolo}
                     </p>
+                  )}
+                  {sequenceSummary.length > 0 && (
+                    <div
+                      style={{
+                        display: "flex",
+                        flexWrap: "wrap",
+                        gap: "0.35rem",
+                        marginTop: "0.2rem",
+                      }}
+                    >
+                      {visibleSummaryPills.map((pill, pillIndex) => (
+                        <span
+                          key={`${giorno.id}-seq-${pillIndex}`}
+                          className="badge"
+                          style={{
+                            borderColor: "#2A3445",
+                            color: "#BFD4F4",
+                            background: "rgba(148,163,184,0.12)",
+                          }}
+                        >
+                          {pill}
+                        </span>
+                      ))}
+                      {hiddenSummaryCount > 0 && (
+                        <span
+                          className="badge"
+                          style={{
+                            borderColor: "#2A3445",
+                            color: "#BFD4F4",
+                            background: "rgba(148,163,184,0.12)",
+                          }}
+                        >
+                          +{hiddenSummaryCount}
+                        </span>
+                      )}
+                    </div>
                   )}
                 </div>
               </button>
