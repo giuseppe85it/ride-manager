@@ -1,5 +1,87 @@
 # CHANGELOG
 
+## 2026-03-03 21:01:45 - feat(maps): google thumbnail proxy for ride segments
+- Commit: a130aa39ca2173c23d3f8b684e434867861207e6
+- Report: docs/ops-log/2026-03-03_21-01.md
+- Files changed:
+  - docs/google_thumbnail.md
+  - firebase.json
+  - functions/package.json
+  - functions/src/index.ts
+  - functions/tsconfig.json
+  - src/pages/GiornoDettaglio.tsx
+## 2026-03-03 20:14:07 - fix(ui): ferry view actions (no disabled CTA)
+- Commit: 76ac58032acbe71871edf06333060a49f0813b86
+- Report: docs/ops-log/2026-03-03_20-14.md
+- Files changed:
+  - src/pages/GiornoDettaglio.tsx
+## 2026-03-03 20:06:33 - feat(ui): sequenza unica giorno (view/edit) + summary in lista giorni
+- Commit: b705f77604f8807eb12e3d53a62df121a5add3cf
+- Report: docs/ops-log/2026-03-03_20-06_1.md
+- Files changed:
+  - docs/ui_sequenza_unica.md
+  - src/pages/Giorni.tsx
+  - src/pages/GiornoDettaglio.tsx
+## 2026-03-03 20:06:11 - feat(ui): sequenza unica giorno (view/edit) + summary in lista giorni
+- Commit: 29ddc46156b18fa08e31ae98f6c2d08f3a73bd51
+- Report: docs/ops-log/2026-03-03_20-06.md
+- Files changed:
+  - STATE_NOW.md
+  - docs/ui_sequenza_unica.md
+  - src/pages/Giorni.tsx
+  - src/pages/GiornoDettaglio.tsx
+## 2026-03-03 20:05:29 - feat(ui): sequenza unica giorno (view/edit) + summary in lista giorni
+- Commit: 1971678475a5703cc6edad62c250c9dd9b7a0681
+- Report: docs/ops-log/2026-03-03_20-05.md
+- Files changed:
+  - STATE_NOW.md
+  - docs/ui_sequenza_unica.md
+  - src/pages/Giorni.tsx
+  - src/pages/GiornoDettaglio.tsx
+## 2026-03-03 19:27:38 - chore(security): env firebase config and ignore dist
+- Commit: ba7989118a4904d0e126aee0a36866775e2b4f02
+- Report: docs/ops-log/2026-03-03_19-27.md
+- Files changed:
+  - .env.example
+  - docs/security_hardening.md
+  - src/firebase/firebaseApp.ts
+## 2026-02-26 13:36:30 - aggiornamento
+- Commit: 09f493da79aad9b0f8ada53323b57a9e2dae6d58
+- Report: docs/ops-log/2026-02-26_13-36.md
+- Files changed:
+  - .firebase/hosting.ZGlzdA.cache
+  - .firebaserc
+  - CHANGELOG.md
+  - STATE_NOW.md
+  - docs/ops-log/2026-02-24_18-46.md
+  - firebase.json
+  - index.html
+  - ops.log
+  - package-lock.json
+  - package.json
+  - public/icons/icon-192-maskable-v2.png
+  - public/icons/icon-192-v2.png
+  - public/icons/icon-512-maskable-v2.png
+  - public/icons/icon-512-v2.png
+  - public/icons/source.jpg
+  - public/manifest.webmanifest
+  - src/App.tsx
+  - src/context/AuthContext.tsx
+  - src/models/GPXFile.ts
+  - src/pages/CostiViaggio.tsx
+  - src/pages/GiornoDettaglio.tsx
+  - src/pages/Home.css
+  - src/pages/Home.tsx
+  - src/pages/HomeImproved.css
+  - src/pages/HomeImproved.tsx
+  - src/pages/PrenotazioneFormModal.tsx
+  - src/services/clientIdentity.ts
+  - src/services/cloudBackup.ts
+  - src/services/cloudBootstrap.ts
+  - src/services/cloudRealtime.ts
+  - src/services/cloudSync.ts
+  - src/services/gpxService.ts
+  - src/services/storage.ts
 ## 2026-02-24 18:46:39 - aggiornamento
 - Commit: efec86a1f7b809fcba1e8862a56df752dbb3fcff
 - Report: docs/ops-log/2026-02-24_18-46.md

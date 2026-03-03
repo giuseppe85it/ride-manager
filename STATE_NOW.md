@@ -1,5 +1,5 @@
 # STATE_NOW - RideManager (Gestione Viaggi Moto)
-Data aggiornamento: 26 02 2026
+Data aggiornamento: 03 03 2026
 
 ## Stack e vincoli
 - Stack: React + Vite + TypeScript, mappa Leaflet/React-Leaflet, persistenza locale IndexedDB.

@@ -522,3 +522,92 @@
   - src/services/cloudBackup.ts
   - src/services/cloudSync.ts
   - src/services/storage.ts
+## 2026-02-26 13:36:30
+- Commit: 09f493da79aad9b0f8ada53323b57a9e2dae6d58
+- Message: aggiornamento
+- Report: docs/ops-log/2026-02-26_13-36.md
+- Modified files:
+  - .firebase/hosting.ZGlzdA.cache
+  - .firebaserc
+  - CHANGELOG.md
+  - STATE_NOW.md
+  - docs/ops-log/2026-02-24_18-46.md
+  - firebase.json
+  - index.html
+  - ops.log
+  - package-lock.json
+  - package.json
+  - public/icons/icon-192-maskable-v2.png
+  - public/icons/icon-192-v2.png
+  - public/icons/icon-512-maskable-v2.png
+  - public/icons/icon-512-v2.png
+  - public/icons/source.jpg
+  - public/manifest.webmanifest
+  - src/App.tsx
+  - src/context/AuthContext.tsx
+  - src/models/GPXFile.ts
+  - src/pages/CostiViaggio.tsx
+  - src/pages/GiornoDettaglio.tsx
+  - src/pages/Home.css
+  - src/pages/Home.tsx
+  - src/pages/HomeImproved.css
+  - src/pages/HomeImproved.tsx
+  - src/pages/PrenotazioneFormModal.tsx
+  - src/services/clientIdentity.ts
+  - src/services/cloudBackup.ts
+  - src/services/cloudBootstrap.ts
+  - src/services/cloudRealtime.ts
+  - src/services/cloudSync.ts
+  - src/services/gpxService.ts
+  - src/services/storage.ts
+## 2026-03-03 19:27:38
+- Commit: ba7989118a4904d0e126aee0a36866775e2b4f02
+- Message: chore(security): env firebase config and ignore dist
+- Report: docs/ops-log/2026-03-03_19-27.md
+- Modified files:
+  - .env.example
+  - docs/security_hardening.md
+  - src/firebase/firebaseApp.ts
+## 2026-03-03 20:05:29
+- Commit: 1971678475a5703cc6edad62c250c9dd9b7a0681
+- Message: feat(ui): sequenza unica giorno (view/edit) + summary in lista giorni
+- Report: docs/ops-log/2026-03-03_20-05.md
+- Modified files:
+  - STATE_NOW.md
+  - docs/ui_sequenza_unica.md
+  - src/pages/Giorni.tsx
+  - src/pages/GiornoDettaglio.tsx
+## 2026-03-03 20:06:11
+- Commit: 29ddc46156b18fa08e31ae98f6c2d08f3a73bd51
+- Message: feat(ui): sequenza unica giorno (view/edit) + summary in lista giorni
+- Report: docs/ops-log/2026-03-03_20-06.md
+- Modified files:
+  - STATE_NOW.md
+  - docs/ui_sequenza_unica.md
+  - src/pages/Giorni.tsx
+  - src/pages/GiornoDettaglio.tsx
+## 2026-03-03 20:06:33
+- Commit: b705f77604f8807eb12e3d53a62df121a5add3cf
+- Message: feat(ui): sequenza unica giorno (view/edit) + summary in lista giorni
+- Report: docs/ops-log/2026-03-03_20-06_1.md
+- Modified files:
+  - docs/ui_sequenza_unica.md
+  - src/pages/Giorni.tsx
+  - src/pages/GiornoDettaglio.tsx
+## 2026-03-03 20:14:07
+- Commit: 76ac58032acbe71871edf06333060a49f0813b86
+- Message: fix(ui): ferry view actions (no disabled CTA)
+- Report: docs/ops-log/2026-03-03_20-14.md
+- Modified files:
+  - src/pages/GiornoDettaglio.tsx
+## 2026-03-03 21:01:45
+- Commit: a130aa39ca2173c23d3f8b684e434867861207e6
+- Message: feat(maps): google thumbnail proxy for ride segments
+- Report: docs/ops-log/2026-03-03_21-01.md
+- Modified files:
+  - docs/google_thumbnail.md
+  - firebase.json
+  - functions/package.json
+  - functions/src/index.ts
+  - functions/tsconfig.json
+  - src/pages/GiornoDettaglio.tsx
