@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Giorno } from "../models/Giorno";
 import type { Prenotazione } from "../models/Prenotazione";
+import PlannerFullscreen, {
+  type PlannerSavePayload,
+  type PlannerWaypoint,
+} from "../components/PlannerFullscreen";
 import {
   deleteGiorno,
   deleteGpxFilesByGiornoId,
@@ -42,6 +46,24 @@ function statoGiornoLabel(stato: Giorno["stato"]): string {
   if (stato === "PIANIFICATO") return "Pianificato";
   if (stato === "IN_CORSO") return "In corso";
   return "Fatto";
+}
+
+function parseWaypointText(value: string, index: number): PlannerWaypoint | null {
+  const [rawLat, rawLon] = value.split(",");
+  const lat = Number.parseFloat(rawLat?.trim() ?? "");
+  const lon = Number.parseFloat(rawLon?.trim() ?? "");
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+    return null;
+  }
+  if (lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+    return null;
+  }
+
+  return {
+    id: `planner_wp_${index}`,
+    lat,
+    lon,
+  };
 }
 
 function compactStopLabel(value: string): string {
@@ -106,6 +128,11 @@ export default function Giorni({ viaggioId, onBack, onOpenGiorno, embedded = fal
   const [stato, setStato] = useState<Giorno["stato"]>("PIANIFICATO");
   const [hotelPrenotazioneId, setHotelPrenotazioneId] = useState("");
   const [plannedMapsUrl, setPlannedMapsUrl] = useState("");
+  const [plannedOriginText, setPlannedOriginText] = useState("");
+  const [plannedDestinationText, setPlannedDestinationText] = useState("");
+  const [plannedRouteDraft, setPlannedRouteDraft] = useState<Giorno["plannedRoute"]>();
+  const [dayPlanDraft, setDayPlanDraft] = useState<Giorno["dayPlan"]>();
+  const [isPlannerOpen, setIsPlannerOpen] = useState(false);
   const [hotelOptions, setHotelOptions] = useState<Prenotazione[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -121,6 +148,16 @@ export default function Giorni({ viaggioId, onBack, onOpenGiorno, embedded = fal
     () => [...giorni].sort((a, b) => a.data.localeCompare(b.data)),
     [giorni],
   );
+  const plannerInitialWaypoints = useMemo(() => {
+    const pointsText = plannedRouteDraft?.pointsText;
+    if (!Array.isArray(pointsText) || pointsText.length < 2) {
+      return [];
+    }
+
+    return pointsText
+      .map((pointText, index) => parseWaypointText(pointText, index))
+      .filter((waypoint): waypoint is PlannerWaypoint => waypoint !== null);
+  }, [plannedRouteDraft]);
 
   async function fetchGiorniByViaggio(targetViaggioId: string): Promise<Giorno[]> {
     return getGiorniByViaggio(targetViaggioId);
@@ -179,6 +216,24 @@ export default function Giorni({ viaggioId, onBack, onOpenGiorno, embedded = fal
     };
   }, [menuOpenForDayId]);
 
+  function handlePlannerSave(payload: PlannerSavePayload): void {
+    setPlannedMapsUrl(payload.plannedMapsUrl);
+    setPlannedOriginText(payload.plannedOriginText);
+    setPlannedDestinationText(payload.plannedDestinationText);
+    setPlannedRouteDraft(payload.plannedRoute);
+    setDayPlanDraft(payload.dayPlan);
+    setIsPlannerOpen(false);
+    setError(null);
+  }
+
+  function handlePlannedMapsUrlChange(nextValue: string): void {
+    setPlannedMapsUrl(nextValue);
+    setPlannedOriginText("");
+    setPlannedDestinationText("");
+    setPlannedRouteDraft(undefined);
+    setDayPlanDraft(undefined);
+  }
+
   async function handleNuovoGiorno(): Promise<void> {
     if (!data) {
       setError("Inserisci la data del giorno.");
@@ -199,6 +254,10 @@ export default function Giorni({ viaggioId, onBack, onOpenGiorno, embedded = fal
       stato,
       hotelPrenotazioneId: hotelPrenotazioneId || undefined,
       plannedMapsUrl: plannedMapsUrlTrimmed || undefined,
+      plannedOriginText: plannedOriginText.trim() || undefined,
+      plannedDestinationText: plannedDestinationText.trim() || undefined,
+      plannedRoute: plannedRouteDraft,
+      dayPlan: dayPlanDraft,
       createdAt: new Date().toISOString(),
     };
 
@@ -211,6 +270,11 @@ export default function Giorni({ viaggioId, onBack, onOpenGiorno, embedded = fal
       setStato("PIANIFICATO");
       setHotelPrenotazioneId("");
       setPlannedMapsUrl("");
+      setPlannedOriginText("");
+      setPlannedDestinationText("");
+      setPlannedRouteDraft(undefined);
+      setDayPlanDraft(undefined);
+      setIsPlannerOpen(false);
       setShowForm(false);
       setError(null);
     } catch (saveError) {
@@ -325,10 +389,21 @@ export default function Giorni({ viaggioId, onBack, onOpenGiorno, embedded = fal
               <input
                 type="url"
                 value={plannedMapsUrl}
-                onChange={(event) => setPlannedMapsUrl(event.target.value)}
+                onChange={(event) => handlePlannedMapsUrlChange(event.target.value)}
                 placeholder="Link pianificazione Google Maps"
                 className="inputField"
               />
+              <button
+                type="button"
+                className="buttonPrimary"
+                onClick={() => {
+                  setError(null);
+                  setIsPlannerOpen(true);
+                }}
+                style={{ minHeight: 44 }}
+              >
+                Pianifica su mappa
+              </button>
             </div>
             <div style={{ marginTop: "0.8rem" }}>
               <button type="button" onClick={() => void handleNuovoGiorno()} className="buttonPrimary">
@@ -641,6 +716,14 @@ export default function Giorni({ viaggioId, onBack, onOpenGiorno, embedded = fal
           </div>
         </div>
       )}
+
+      <PlannerFullscreen
+        isOpen={isPlannerOpen}
+        onClose={() => setIsPlannerOpen(false)}
+        onSave={handlePlannerSave}
+        initialWaypoints={plannerInitialWaypoints}
+        initialMode={plannedRouteDraft?.modeRequested ?? "direct"}
+      />
     </>
   );
 
