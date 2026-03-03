@@ -1582,7 +1582,12 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
                   const ferryArrival = pickFirstNonEmpty([ferryBooking?.portoArrivo, segment.arrivePortText]);
                   const ferryDepartureTime = pickFirstNonEmpty([ferryBooking?.oraInizio]);
                   const ferryArrivalTime = pickFirstNonEmpty([ferryBooking?.oraFine]);
+                  const ferryBookingUrlRaw = pickFirstNonEmpty([ferryBooking?.url]);
+                  const ferryBookingUrl =
+                    ferryBookingUrlRaw && isValidHttpUrl(ferryBookingUrlRaw) ? ferryBookingUrlRaw : null;
+                  const hasFerryPorts = Boolean(ferryDeparture && ferryArrival);
                   const ferryNavUrl = buildFerryNavigationUrl(segment, ferryBooking);
+                  const showIncompleteFerryCta = !ferryBookingUrl && !hasFerryPorts;
 
                   return (
                     <div key={segment.id} className="card detailCard" style={{ padding: "0.75rem" }}>
@@ -1602,14 +1607,35 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
                           </span>
                           <strong>Traghetto {index + 1}</strong>
                         </div>
-                        <button
-                          type="button"
-                          className="buttonPrimary"
-                          onClick={() => handleOpenFerrySegmentNavigation(segment.id)}
-                          disabled={!ferryNavUrl}
-                        >
-                          VAI
-                        </button>
+                        <div style={{ display: "flex", gap: "0.45rem", flexWrap: "wrap" }}>
+                          {ferryBookingUrl && (
+                            <button
+                              type="button"
+                              className="buttonPrimary"
+                              onClick={() => window.open(ferryBookingUrl, "_blank", "noopener,noreferrer")}
+                            >
+                              Apri prenotazione
+                            </button>
+                          )}
+                          {hasFerryPorts && ferryNavUrl && (
+                            <button
+                              type="button"
+                              className="buttonGhost"
+                              onClick={() => handleOpenFerrySegmentNavigation(segment.id)}
+                            >
+                              Apri rotta Maps
+                            </button>
+                          )}
+                          {showIncompleteFerryCta && (
+                            <button
+                              type="button"
+                              className="buttonGhost"
+                              onClick={() => setIsEditMode(true)}
+                            >
+                              Modifica
+                            </button>
+                          )}
+                        </div>
                       </div>
 
                       <p className="metaText" style={{ margin: "0 0 0.2rem 0" }}>
@@ -1624,6 +1650,11 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
                       <p className="metaText" style={{ margin: 0 }}>
                         Orari: {ferryDepartureTime ?? "\u2014"} {"\u2192"} {ferryArrivalTime ?? "\u2014"}
                       </p>
+                      {showIncompleteFerryCta && (
+                        <p className="metaText" style={{ margin: "0.35rem 0 0 0" }}>
+                          Dati traghetto incompleti
+                        </p>
+                      )}
                     </div>
                   );
                 })}
