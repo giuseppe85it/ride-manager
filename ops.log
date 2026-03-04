@@ -688,3 +688,38 @@
   - docs/ops-log/2026-03-04_06-31.md
   - functions/lib/index.js
   - ops.log
+## 2026-03-04 06:36:52
+- Commit: abf36482d7b4c61cdc2681daa90798355a8fec47
+- Message: chore: sync changes
+- Report: docs/ops-log/2026-03-04_06-36.md
+- Modified files:
+  - CHANGELOG.md
+  - docs/ops-log/2026-03-04_06-32.md
+  - ops.log
+## 2026-03-04 18:19:24
+- Commit: e3e6e02da13c4ae38588deaf06c834a33c8ea478
+- Message: feat(ui): persist ride thumbnail cache (no live calls in view)
+- Report: docs/ops-log/2026-03-04_18-19.md
+- Modified files:
+  - docs/thumbnail_cache.md
+  - src/models/Giorno.ts
+  - src/pages/GiornoDettaglio.tsx
+  - src/services/storage.ts
+## 2026-03-04 18:34:32
+- Commit: 492c22351c0f2dff5d8d9602d2f533cf0df20ed5
+- Message: fix(functions): correct static maps path format
+- Report: docs/ops-log/2026-03-04_18-34.md
+- Modified files:
+  - functions/src/index.ts
+## 2026-03-04 18:45:44
+- Commit: 137baecc20ecee331ae9dc1e4482ecd72f0a3580
+- Message: fix(dev): proxy /api to deployed cloud function
+- Report: docs/ops-log/2026-03-04_18-45.md
+- Modified files:
+  - vite.config.ts
+## 2026-03-04 18:54:26
+- Commit: bb9361381b5d4f0cfac37aac8a4958e2d1d17498
+- Message: feat(ui): persist ride thumbnails and regenerate only on change
+- Report: docs/ops-log/2026-03-04_18-54.md
+- Modified files:
+  - src/pages/GiornoDettaglio.tsx

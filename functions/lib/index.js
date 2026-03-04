@@ -102,21 +102,24 @@ async function handleGoogleThumbnail(req, res) {
             res.status(400).json({ errore: "Servono path valido oppure origin+destination" });
             return;
         }
-        const staticMapUrl = new URL("https://maps.googleapis.com/maps/api/staticmap");
-        staticMapUrl.searchParams.set("size", `${width}x${height}`);
-        staticMapUrl.searchParams.set("scale", "2");
-        staticMapUrl.searchParams.set("maptype", "roadmap");
+        const queryParts = [
+            `size=${width}x${height}`,
+            "scale=2",
+            "maptype=roadmap",
+        ];
         if (path) {
-            staticMapUrl.searchParams.append("path", `color:0x1F6FEB|weight:4|${path}`);
+            const pathParam = `color:0x0000ff|weight:4|${path}`;
+            queryParts.push(`path=${pathParam}`);
         }
         if (origin) {
-            staticMapUrl.searchParams.append("markers", `color:green|label:A|${origin}`);
+            queryParts.push(`markers=${encodeURIComponent(`color:green|label:A|${origin}`)}`);
         }
         if (destination) {
-            staticMapUrl.searchParams.append("markers", `color:red|label:B|${destination}`);
+            queryParts.push(`markers=${encodeURIComponent(`color:red|label:B|${destination}`)}`);
         }
-        staticMapUrl.searchParams.set("key", key);
-        const upstreamResponse = await fetchWithTimeout(staticMapUrl.toString(), 12000);
+        queryParts.push(`key=${encodeURIComponent(key)}`);
+        const staticMapUrl = `https://maps.googleapis.com/maps/api/staticmap?${queryParts.join("&")}`;
+        const upstreamResponse = await fetchWithTimeout(staticMapUrl, 12000);
         const status = upstreamResponse.status;
         const contentType = upstreamResponse.headers.get("content-type") ?? "image/png";
         if (!upstreamResponse.ok) {
