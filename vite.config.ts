@@ -7,8 +7,10 @@ export default defineConfig({
   server: {
     proxy: {
       "/api": {
-        target: "http://localhost:5174",
+        target: "https://us-central1-ridemanager-pwa.cloudfunctions.net",
         changeOrigin: true,
+        secure: true,
+        rewrite: (path) => path,
       },
     },
   },
