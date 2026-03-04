@@ -1,5 +1,23 @@
 # CHANGELOG
 
+## 2026-03-04 06:31:13 - fix(functions): harden google thumbnail endpoint and log errors
+- Commit: bf93ca16ae935ef5df86f8f51f40376bf8d2445e
+- Report: docs/ops-log/2026-03-04_06-31.md
+- Files changed:
+  - functions/src/index.ts
+## 2026-03-04 06:26:23 - aggiornamento
+- Commit: 1adcc622e27ed4c20030fd2aeb048ad3d25c9cbb
+- Report: docs/ops-log/2026-03-04_06-26.md
+- Files changed:
+  - CHANGELOG.md
+  - docs/ops-log/2026-03-03_21-08.md
+  - docs/ops-log/2026-03-03_21-10.md
+  - docs/ops-log/2026-03-03_21-17.md
+  - docs/ops-log/2026-03-03_22-24.md
+  - docs/ops-log/2026-03-04_06-16.md
+  - functions/lib/index.js
+  - functions/package-lock.json
+  - ops.log
 ## 2026-03-04 06:16:07 - fix(functions): add google thumbnail route alias without double /api
 - Commit: fa29aca7c05d270d1301b19fe826b8fce57ebca2
 - Report: docs/ops-log/2026-03-04_06-16.md
