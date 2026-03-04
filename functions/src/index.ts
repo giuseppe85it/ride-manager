@@ -96,7 +96,7 @@ async function fetchWithTimeout(url: string, timeoutMs: number): Promise<globalT
   }
 }
 
-app.get("/api/google/thumbnail", async (req: Request, res: Response) => {
+async function handleGoogleThumbnail(req: Request, res: Response): Promise<void> {
   const key = googleMapsStaticApiKey.value();
   if (!key) {
     res.status(500).json({ error: "GOOGLE_MAPS_STATIC_API_KEY non configurata" });
@@ -160,7 +160,10 @@ app.get("/api/google/thumbnail", async (req: Request, res: Response) => {
   } catch {
     res.status(500).json({ error: "Errore generazione thumbnail Google" });
   }
-});
+}
+
+app.get("/api/google/thumbnail", handleGoogleThumbnail);
+app.get("/google/thumbnail", handleGoogleThumbnail);
 
 app.all("*", (_req: Request, res: Response) => {
   res.status(404).json({ error: "Not found" });
