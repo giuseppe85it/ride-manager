@@ -611,3 +611,50 @@
   - functions/src/index.ts
   - functions/tsconfig.json
   - src/pages/GiornoDettaglio.tsx
+## 2026-03-03 21:08:13
+- Commit: 5b94cf589471400de1655ca6367e77084de1b79e
+- Message: aggiornamento
+- Report: docs/ops-log/2026-03-03_21-08.md
+- Modified files:
+  - CHANGELOG.md
+  - STATE_NOW.md
+  - docs/day_data_model_and_ui_map.md
+  - docs/flow_diagram_ride_manager.md
+  - docs/google_key_audit.md
+  - docs/ops-log/2026-02-26_13-36.md
+  - docs/ops-log/2026-03-03_19-27.md
+  - docs/ops-log/2026-03-03_20-05.md
+  - docs/ops-log/2026-03-03_20-06.md
+  - docs/ops-log/2026-03-03_20-06_1.md
+  - docs/ops-log/2026-03-03_20-14.md
+  - docs/ops-log/2026-03-03_21-01.md
+  - ops.log
+## 2026-03-03 21:10:53
+- Commit: fdcd49a6b5268e75bf8550f5693afccf7d3bfd5a
+- Message: feat(planner): guarantee ride geometry on exit edit
+- Report: docs/ops-log/2026-03-03_21-10.md
+- Modified files:
+  - docs/ride_geometry_guarantee.md
+  - src/pages/GiornoDettaglio.tsx
+## 2026-03-03 21:17:29
+- Commit: a8e90dddee334661145af1bc6f24b8ab1aa5c8d2
+- Message: fix(planner): auto-generate ride geometry in view (no edit blocks)
+- Report: docs/ops-log/2026-03-03_21-17.md
+- Modified files:
+  - docs/ride_geometry_guarantee.md
+  - src/pages/GiornoDettaglio.tsx
+## 2026-03-03 22:24:56
+- Commit: ff0ecd3463f75e0c0348d630ab87281bf9a62f96
+- Message: feat(planner): fullscreen map planner with waypoint routing and auto google link
+- Report: docs/ops-log/2026-03-03_22-24.md
+- Modified files:
+  - docs/planner_mappa.md
+  - src/components/PlannerFullscreen.tsx
+  - src/pages/Giorni.tsx
+## 2026-03-04 06:16:07
+- Commit: fa29aca7c05d270d1301b19fe826b8fce57ebca2
+- Message: fix(functions): add google thumbnail route alias without double /api
+- Report: docs/ops-log/2026-03-04_06-16.md
+- Modified files:
+  - STATE_NOW.md
+  - functions/src/index.ts

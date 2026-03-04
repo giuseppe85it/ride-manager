@@ -1,5 +1,47 @@
 # CHANGELOG
 
+## 2026-03-04 06:16:07 - fix(functions): add google thumbnail route alias without double /api
+- Commit: fa29aca7c05d270d1301b19fe826b8fce57ebca2
+- Report: docs/ops-log/2026-03-04_06-16.md
+- Files changed:
+  - STATE_NOW.md
+  - functions/src/index.ts
+## 2026-03-03 22:24:56 - feat(planner): fullscreen map planner with waypoint routing and auto google link
+- Commit: ff0ecd3463f75e0c0348d630ab87281bf9a62f96
+- Report: docs/ops-log/2026-03-03_22-24.md
+- Files changed:
+  - docs/planner_mappa.md
+  - src/components/PlannerFullscreen.tsx
+  - src/pages/Giorni.tsx
+## 2026-03-03 21:17:29 - fix(planner): auto-generate ride geometry in view (no edit blocks)
+- Commit: a8e90dddee334661145af1bc6f24b8ab1aa5c8d2
+- Report: docs/ops-log/2026-03-03_21-17.md
+- Files changed:
+  - docs/ride_geometry_guarantee.md
+  - src/pages/GiornoDettaglio.tsx
+## 2026-03-03 21:10:53 - feat(planner): guarantee ride geometry on exit edit
+- Commit: fdcd49a6b5268e75bf8550f5693afccf7d3bfd5a
+- Report: docs/ops-log/2026-03-03_21-10.md
+- Files changed:
+  - docs/ride_geometry_guarantee.md
+  - src/pages/GiornoDettaglio.tsx
+## 2026-03-03 21:08:13 - aggiornamento
+- Commit: 5b94cf589471400de1655ca6367e77084de1b79e
+- Report: docs/ops-log/2026-03-03_21-08.md
+- Files changed:
+  - CHANGELOG.md
+  - STATE_NOW.md
+  - docs/day_data_model_and_ui_map.md
+  - docs/flow_diagram_ride_manager.md
+  - docs/google_key_audit.md
+  - docs/ops-log/2026-02-26_13-36.md
+  - docs/ops-log/2026-03-03_19-27.md
+  - docs/ops-log/2026-03-03_20-05.md
+  - docs/ops-log/2026-03-03_20-06.md
+  - docs/ops-log/2026-03-03_20-06_1.md
+  - docs/ops-log/2026-03-03_20-14.md
+  - docs/ops-log/2026-03-03_21-01.md
+  - ops.log
 ## 2026-03-03 21:01:45 - feat(maps): google thumbnail proxy for ride segments
 - Commit: a130aa39ca2173c23d3f8b684e434867861207e6
 - Report: docs/ops-log/2026-03-03_21-01.md
