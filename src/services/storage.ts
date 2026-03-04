@@ -340,6 +340,8 @@ function normalizeDayPlanSegment(value: unknown): DayPlanSegment | null {
     const modeApplied = isPlannedRouteMode(record.modeApplied) ? record.modeApplied : undefined;
     const distanceKm = toOptionalNumber(record.distanceKm);
     const durationMin = toOptionalNumber(record.durationMin);
+    const thumbnailDataUrl = toOptionalString(record.thumbnailDataUrl);
+    const thumbnailHash = toOptionalString(record.thumbnailHash);
     const geometry = Array.isArray(record.geometry)
       ? record.geometry
           .map((point) => {
@@ -375,6 +377,8 @@ function normalizeDayPlanSegment(value: unknown): DayPlanSegment | null {
       distanceKm,
       durationMin,
       geometry: geometry && geometry.length >= 2 ? geometry : undefined,
+      thumbnailDataUrl,
+      thumbnailHash,
     };
   }
 

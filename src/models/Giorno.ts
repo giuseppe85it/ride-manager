@@ -26,6 +26,8 @@ export interface RideSegment {
   distanceKm?: number;
   durationMin?: number;
   geometry?: PlannedRoutePoint[];
+  thumbnailDataUrl?: string;
+  thumbnailHash?: string;
 }
 
 export interface FerrySegment {

@@ -211,7 +211,7 @@ function sampleRideGeometryForThumbnail(
   return sampled.length >= 2 ? sampled : geometry;
 }
 
-function buildRideThumbnailUrl(segment: RideSegment): string | null {
+function buildRideThumbnailRequestUrl(segment: RideSegment): string | null {
   if (!Array.isArray(segment.geometry) || segment.geometry.length < 2) {
     return null;
   }
@@ -240,6 +240,45 @@ function buildRideThumbnailUrl(segment: RideSegment): string | null {
   }
 
   return `/api/google/thumbnail?${params.toString()}`;
+}
+
+function buildRideGeometryHash(geometry: NonNullable<RideSegment["geometry"]>): string {
+  const maxSamplePoints = 20;
+  const step = Math.max(1, Math.floor(geometry.length / maxSamplePoints));
+  const sampled: string[] = [];
+
+  for (let index = 0; index < geometry.length; index += step) {
+    const point = geometry[index];
+    if (!point) {
+      continue;
+    }
+    sampled.push(`${point.lat.toFixed(5)},${point.lon.toFixed(5)}`);
+  }
+
+  const lastPoint = geometry[geometry.length - 1];
+  if (lastPoint) {
+    const lastEncoded = `${lastPoint.lat.toFixed(5)},${lastPoint.lon.toFixed(5)}`;
+    if (sampled[sampled.length - 1] !== lastEncoded) {
+      sampled.push(lastEncoded);
+    }
+  }
+
+  return `${geometry.length}:${sampled.join("|")}`;
+}
+
+async function blobToDataUrl(blob: Blob): Promise<string> {
+  return await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Impossibile convertire immagine thumbnail"));
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        resolve(reader.result);
+        return;
+      }
+      reject(new Error("Formato thumbnail non valido"));
+    };
+    reader.readAsDataURL(blob);
+  });
 }
 
 function createEmptyDayPlan(): DayPlan {
@@ -448,10 +487,7 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
   const [plannerSearch, setPlannerSearch] = useState<PlannerSearchState | null>(null);
   const [rideSegmentUiError, setRideSegmentUiError] = useState<{ segmentId: string; message: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [autoGeometrySegmentId, setAutoGeometrySegmentId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const autoGeometryInFlightSegmentIdsRef = useRef<Set<string>>(new Set());
-  const autoGeometryTriedSegmentIdsRef = useRef<Set<string>>(new Set());
 
   async function reloadDataForDay(targetGiornoId: string): Promise<void> {
     const [gpxRecords, pointRecords, giornoRecord] = await Promise.all([
@@ -559,12 +595,6 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
     return () => {
       isActive = false;
     };
-  }, [giornoId]);
-
-  useEffect(() => {
-    autoGeometryInFlightSegmentIdsRef.current.clear();
-    autoGeometryTriedSegmentIdsRef.current.clear();
-    setAutoGeometrySegmentId(null);
   }, [giornoId]);
 
   useEffect(() => {
@@ -1084,6 +1114,26 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
     return payload;
   }
 
+  async function fetchRideThumbnailDataUrl(segment: RideSegment): Promise<string> {
+    const thumbnailUrl = buildRideThumbnailRequestUrl(segment);
+    if (!thumbnailUrl) {
+      throw new Error("Impossibile generare anteprima: geometria non valida");
+    }
+
+    const response = await fetch(thumbnailUrl);
+    if (!response.ok) {
+      const details = (await response.text().catch(() => "")).slice(0, 500);
+      throw new Error(`Thumbnail HTTP ${response.status}${details ? `: ${details}` : ""}`);
+    }
+
+    const imageBlob = await response.blob();
+    if (!(imageBlob.size > 0)) {
+      throw new Error("Thumbnail vuota");
+    }
+
+    return blobToDataUrl(imageBlob);
+  }
+
   async function handleCalculateRideSegment(segmentId: string): Promise<void> {
     const currentDayPlan = giorno?.dayPlan;
     if (!giorno || !currentDayPlan) {
@@ -1165,19 +1215,134 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
     }
 
     const currentDayPlan = giorno?.dayPlan;
-    if (currentDayPlan) {
-      const missingDataSegments = currentDayPlan.segments.filter(
-        (segment): segment is RideSegment =>
-          segment.type === "RIDE" &&
-          (!Array.isArray(segment.geometry) || segment.geometry.length < 2) &&
-          (!segment.originText.trim() || !segment.destinationText.trim()),
-      );
-      if (missingDataSegments.length > 0) {
-        setError("Alcune tratte non hanno Partenza/Arrivo: completa i dati da Modifica per generare la mini-mappa.");
-      }
+    if (!giorno || !currentDayPlan) {
+      setIsEditMode(false);
+      return;
     }
 
-    setIsEditMode(false);
+    setIsGeneratingRoute(true);
+    setRideSegmentUiError(null);
+
+    try {
+      const warnings: string[] = [];
+      let hasChanges = false;
+      const nextSegments: DayPlan["segments"] = [];
+
+      for (const segment of currentDayPlan.segments) {
+        if (segment.type !== "RIDE") {
+          nextSegments.push(segment);
+          continue;
+        }
+
+        let nextSegment: RideSegment = {
+          ...segment,
+          geometry: Array.isArray(segment.geometry) ? [...segment.geometry] : undefined,
+        };
+        const hasInputTexts =
+          nextSegment.originText.trim().length > 0 && nextSegment.destinationText.trim().length > 0;
+
+        if ((!Array.isArray(nextSegment.geometry) || nextSegment.geometry.length < 2) && hasInputTexts) {
+          try {
+            const payload = await requestRideRoute(
+              nextSegment.id,
+              nextSegment.originText.trim(),
+              nextSegment.destinationText.trim(),
+              nextSegment.modeRequested,
+            );
+
+            nextSegment = {
+              ...nextSegment,
+              originText: payload.originResolved.displayName,
+              destinationText: payload.destinationResolved.displayName,
+              modeRequested: payload.modeRequested,
+              modeApplied: payload.modeApplied,
+              distanceKm: payload.distanceKm,
+              durationMin: payload.durationMin,
+              geometry: payload.geometry,
+              thumbnailDataUrl: undefined,
+              thumbnailHash: undefined,
+            };
+            hasChanges = true;
+          } catch (routeError) {
+            const message =
+              routeError instanceof Error
+                ? routeError.message
+                : "Errore calcolo tratta (verifica Partenza/Arrivo)";
+            warnings.push(`Tratta ${nextSegments.length + 1}: ${message}`);
+          }
+        } else if (!hasInputTexts && (!Array.isArray(nextSegment.geometry) || nextSegment.geometry.length < 2)) {
+          warnings.push(
+            `Tratta ${nextSegments.length + 1}: completa Partenza/Arrivo per generare route e mini-mappa.`,
+          );
+        }
+
+        if (Array.isArray(nextSegment.geometry) && nextSegment.geometry.length >= 2) {
+          const nextThumbnailHash = buildRideGeometryHash(nextSegment.geometry);
+          const shouldGenerateThumbnail =
+            !nextSegment.thumbnailDataUrl || nextSegment.thumbnailHash !== nextThumbnailHash;
+
+          if (shouldGenerateThumbnail) {
+            try {
+              const nextThumbnailDataUrl = await fetchRideThumbnailDataUrl(nextSegment);
+              nextSegment = {
+                ...nextSegment,
+                thumbnailDataUrl: nextThumbnailDataUrl,
+                thumbnailHash: nextThumbnailHash,
+              };
+              hasChanges = true;
+            } catch (thumbnailError) {
+              const message =
+                thumbnailError instanceof Error ? thumbnailError.message : "Errore generazione mini-mappa";
+              console.error("thumbnail generation failed", {
+                segmentId: nextSegment.id,
+                message,
+                stack: thumbnailError instanceof Error ? thumbnailError.stack : undefined,
+              });
+              const hadThumbnail = Boolean(nextSegment.thumbnailDataUrl || nextSegment.thumbnailHash);
+              nextSegment = {
+                ...nextSegment,
+                thumbnailDataUrl: undefined,
+                thumbnailHash: undefined,
+              };
+              if (hadThumbnail) {
+                hasChanges = true;
+              }
+              warnings.push(`Tratta ${nextSegments.length + 1}: ${message}`);
+            }
+          }
+        } else if (nextSegment.thumbnailDataUrl || nextSegment.thumbnailHash) {
+          nextSegment = {
+            ...nextSegment,
+            thumbnailDataUrl: undefined,
+            thumbnailHash: undefined,
+          };
+          hasChanges = true;
+        }
+
+        nextSegments.push(nextSegment);
+      }
+
+      if (hasChanges) {
+        await saveDayPlan({
+          ...currentDayPlan,
+          segments: nextSegments,
+          updatedAt: new Date().toISOString(),
+        });
+      }
+
+      if (warnings.length > 0) {
+        setError(warnings.join(" "));
+      } else {
+        setError(null);
+      }
+      setPlannerSearch(null);
+    } catch (toggleError) {
+      const message = toggleError instanceof Error ? toggleError.message : "Errore aggiornamento mini-mappe";
+      setError(message);
+    } finally {
+      setIsGeneratingRoute(false);
+      setIsEditMode(false);
+    }
   }
 
   function handleOpenRideSegmentNavigation(segmentId: string): void {
@@ -1582,51 +1747,6 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
       : null;
   const hasPlannedMapsLink = Boolean(giorno?.plannedMapsUrl && giorno.plannedMapsUrl.trim().length > 0);
 
-  useEffect(() => {
-    if (isEditMode) {
-      return;
-    }
-
-    const currentDayPlan = giorno?.dayPlan;
-    if (!currentDayPlan || autoGeometryInFlightSegmentIdsRef.current.size > 0) {
-      return;
-    }
-
-    const nextSegmentToCalculate = currentDayPlan.segments.find(
-      (segment): segment is RideSegment =>
-        segment.type === "RIDE" &&
-        (!Array.isArray(segment.geometry) || segment.geometry.length < 2) &&
-        segment.originText.trim().length > 0 &&
-        segment.destinationText.trim().length > 0 &&
-        !autoGeometryTriedSegmentIdsRef.current.has(segment.id) &&
-        !autoGeometryInFlightSegmentIdsRef.current.has(segment.id),
-    );
-
-    if (!nextSegmentToCalculate) {
-      return;
-    }
-
-    autoGeometryTriedSegmentIdsRef.current.add(nextSegmentToCalculate.id);
-    autoGeometryInFlightSegmentIdsRef.current.add(nextSegmentToCalculate.id);
-    setAutoGeometrySegmentId(nextSegmentToCalculate.id);
-
-    let isCancelled = false;
-    void (async () => {
-      try {
-        await handleCalculateRideSegment(nextSegmentToCalculate.id);
-      } finally {
-        autoGeometryInFlightSegmentIdsRef.current.delete(nextSegmentToCalculate.id);
-        if (!isCancelled) {
-          setAutoGeometrySegmentId((current) => (current === nextSegmentToCalculate.id ? null : current));
-        }
-      }
-    })();
-
-    return () => {
-      isCancelled = true;
-    };
-  }, [isEditMode, giorno?.dayPlan, autoGeometrySegmentId]);
-
   return (
     <main className="pageWrap">
       <div className="pageContainer">
@@ -1679,12 +1799,14 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
               <div style={{ display: "grid", gap: "0.75rem" }}>
                 {viewSegments.map((segment, index) => {
                   if (segment.type === "RIDE") {
-                    const rideThumbnailUrl = buildRideThumbnailUrl(segment);
-                    const hasRideGeometry = Boolean(rideThumbnailUrl);
+                    const rideThumbnailDataUrl =
+                      typeof segment.thumbnailDataUrl === "string" &&
+                      segment.thumbnailDataUrl.startsWith("data:image")
+                        ? segment.thumbnailDataUrl
+                        : null;
+                    const hasRideNavigation =
+                      segment.originText.trim().length > 0 && segment.destinationText.trim().length > 0;
                     const hasRideInputs = segment.originText.trim().length > 0 && segment.destinationText.trim().length > 0;
-                    const isAutoGeneratingMiniMap =
-                      autoGeometrySegmentId === segment.id ||
-                      autoGeometryInFlightSegmentIdsRef.current.has(segment.id);
                     return (
                       <div key={segment.id} className="card detailCard" style={{ padding: "0.75rem" }}>
                         <div
@@ -1704,7 +1826,7 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
                           <button
                             type="button"
                             onClick={() => {
-                              if (hasRideGeometry) {
+                              if (hasRideNavigation) {
                                 handleOpenRideSegmentNavigation(segment.id);
                                 return;
                               }
@@ -1720,12 +1842,12 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
                               width: 160,
                               height: 90,
                             }}
-                            aria-label={hasRideGeometry ? "Apri navigazione" : "Apri modifica tratta"}
-                            title={hasRideGeometry ? "Apri navigazione" : "Apri modifica tratta"}
+                            aria-label={hasRideNavigation ? "Apri navigazione" : "Apri modifica tratta"}
+                            title={hasRideNavigation ? "Apri navigazione" : "Apri modifica tratta"}
                           >
-                            {hasRideGeometry ? (
+                            {rideThumbnailDataUrl ? (
                               <img
-                                src={rideThumbnailUrl ?? undefined}
+                                src={rideThumbnailDataUrl}
                                 alt={`Mini mappa ${buildRideSummaryLabel(segment.originText, segment.destinationText)}`}
                                 width={160}
                                 height={90}
@@ -1749,9 +1871,7 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
                                 }}
                               >
                                 {hasRideInputs
-                                  ? isAutoGeneratingMiniMap
-                                    ? "Generazione mini-mappa..."
-                                    : "Generazione mini-mappa..."
+                                  ? "Anteprima disponibile dopo Fine in Modifica"
                                   : "Completa dati in Modifica"}
                               </div>
                             )}
