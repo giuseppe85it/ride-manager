@@ -242,28 +242,47 @@ function buildRideThumbnailRequestUrl(segment: RideSegment): string | null {
   return `/api/google/thumbnail?${params.toString()}`;
 }
 
-function buildRideGeometryHash(geometry: NonNullable<RideSegment["geometry"]>): string {
-  const maxSamplePoints = 20;
+function hashStringDjb2(value: string): string {
+  let hash = 5381;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = ((hash << 5) + hash) ^ value.charCodeAt(index);
+  }
+  return (hash >>> 0).toString(16);
+}
+
+function buildRideThumbHash(segment: RideSegment): string | null {
+  if (!Array.isArray(segment.geometry) || segment.geometry.length < 2) {
+    return null;
+  }
+
+  const geometry = segment.geometry;
+  const maxSamplePoints = 60;
   const step = Math.max(1, Math.floor(geometry.length / maxSamplePoints));
-  const sampled: string[] = [];
+  const sampledPoints: string[] = [];
 
   for (let index = 0; index < geometry.length; index += step) {
     const point = geometry[index];
     if (!point) {
       continue;
     }
-    sampled.push(`${point.lat.toFixed(5)},${point.lon.toFixed(5)}`);
+    sampledPoints.push(`${point.lat.toFixed(5)},${point.lon.toFixed(5)}`);
   }
 
   const lastPoint = geometry[geometry.length - 1];
   if (lastPoint) {
     const lastEncoded = `${lastPoint.lat.toFixed(5)},${lastPoint.lon.toFixed(5)}`;
-    if (sampled[sampled.length - 1] !== lastEncoded) {
-      sampled.push(lastEncoded);
+    if (sampledPoints[sampledPoints.length - 1] !== lastEncoded) {
+      sampledPoints.push(lastEncoded);
     }
   }
 
-  return `${geometry.length}:${sampled.join("|")}`;
+  const signature =
+    `${segment.originText.trim()}|` +
+    `${segment.destinationText.trim()}|` +
+    `${sampledPoints.join(";")}|` +
+    `${geometry.length}`;
+
+  return hashStringDjb2(signature);
 }
 
 async function blobToDataUrl(blob: Blob): Promise<string> {
@@ -1259,8 +1278,6 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
               distanceKm: payload.distanceKm,
               durationMin: payload.durationMin,
               geometry: payload.geometry,
-              thumbnailDataUrl: undefined,
-              thumbnailHash: undefined,
             };
             hasChanges = true;
           } catch (routeError) {
@@ -1277,7 +1294,11 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
         }
 
         if (Array.isArray(nextSegment.geometry) && nextSegment.geometry.length >= 2) {
-          const nextThumbnailHash = buildRideGeometryHash(nextSegment.geometry);
+          const nextThumbnailHash = buildRideThumbHash(nextSegment);
+          if (!nextThumbnailHash) {
+            nextSegments.push(nextSegment);
+            continue;
+          }
           const shouldGenerateThumbnail =
             !nextSegment.thumbnailDataUrl || nextSegment.thumbnailHash !== nextThumbnailHash;
 
@@ -1298,25 +1319,9 @@ export default function GiornoDettaglio({ giornoId, onBack }: GiornoDettaglioPro
                 message,
                 stack: thumbnailError instanceof Error ? thumbnailError.stack : undefined,
               });
-              const hadThumbnail = Boolean(nextSegment.thumbnailDataUrl || nextSegment.thumbnailHash);
-              nextSegment = {
-                ...nextSegment,
-                thumbnailDataUrl: undefined,
-                thumbnailHash: undefined,
-              };
-              if (hadThumbnail) {
-                hasChanges = true;
-              }
               warnings.push(`Tratta ${nextSegments.length + 1}: ${message}`);
             }
           }
-        } else if (nextSegment.thumbnailDataUrl || nextSegment.thumbnailHash) {
-          nextSegment = {
-            ...nextSegment,
-            thumbnailDataUrl: undefined,
-            thumbnailHash: undefined,
-          };
-          hasChanges = true;
         }
 
         nextSegments.push(nextSegment);
