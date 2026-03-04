@@ -1,5 +1,14 @@
 # CHANGELOG
 
+## 2026-03-04 06:32:02 - chore: sync changes
+- Commit: 5857241ca798dc2d56b91840d5e898de33925642
+- Report: docs/ops-log/2026-03-04_06-32.md
+- Files changed:
+  - CHANGELOG.md
+  - docs/ops-log/2026-03-04_06-26.md
+  - docs/ops-log/2026-03-04_06-31.md
+  - functions/lib/index.js
+  - ops.log
 ## 2026-03-04 06:31:13 - fix(functions): harden google thumbnail endpoint and log errors
 - Commit: bf93ca16ae935ef5df86f8f51f40376bf8d2445e
 - Report: docs/ops-log/2026-03-04_06-31.md
