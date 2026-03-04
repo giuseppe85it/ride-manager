@@ -97,68 +97,85 @@ async function fetchWithTimeout(url: string, timeoutMs: number): Promise<globalT
 }
 
 async function handleGoogleThumbnail(req: Request, res: Response): Promise<void> {
-  const key = googleMapsStaticApiKey.value();
-  if (!key) {
-    res.status(500).json({ error: "GOOGLE_MAPS_STATIC_API_KEY non configurata" });
-    return;
-  }
-
-  const width = parseBoundedInt(req.query.w, 320, 64, 640);
-  const height = parseBoundedInt(req.query.h, 180, 64, 360);
-  const origin = toOptionalTrimmedString(req.query.origin);
-  const destination = toOptionalTrimmedString(req.query.destination);
-  const rawPath = toOptionalTrimmedString(req.query.path);
-  const path = rawPath ? normalizePathValue(rawPath) : null;
-
-  if (rawPath && !path) {
-    res.status(400).json({ error: "Parametro path non valido" });
-    return;
-  }
-
-  if (!path && !(origin && destination)) {
-    res.status(400).json({ error: "Servono path valido oppure origin+destination" });
-    return;
-  }
-
-  const staticMapUrl = new URL("https://maps.googleapis.com/maps/api/staticmap");
-  staticMapUrl.searchParams.set("size", `${width}x${height}`);
-  staticMapUrl.searchParams.set("scale", "2");
-  staticMapUrl.searchParams.set("maptype", "roadmap");
-
-  if (path) {
-    staticMapUrl.searchParams.append("path", `color:0x1F6FEB|weight:4|${path}`);
-  }
-
-  if (origin) {
-    staticMapUrl.searchParams.append("markers", `color:green|label:A|${origin}`);
-  }
-
-  if (destination) {
-    staticMapUrl.searchParams.append("markers", `color:red|label:B|${destination}`);
-  }
-
-  staticMapUrl.searchParams.set("key", key);
-
   try {
+    console.log("[thumbnail] query", req.query);
+
+    const key = googleMapsStaticApiKey.value();
+    if (!key) {
+      res.status(500).json({ errore: "GOOGLE_MAPS_STATIC_API_KEY non configurata" });
+      return;
+    }
+
+    const width = parseBoundedInt(req.query.w, 320, 64, 640);
+    const height = parseBoundedInt(req.query.h, 180, 64, 360);
+    const origin = toOptionalTrimmedString(req.query.origin);
+    const destination = toOptionalTrimmedString(req.query.destination);
+    const rawPath = toOptionalTrimmedString(req.query.path);
+    const path = rawPath ? normalizePathValue(rawPath) : null;
+
+    if (rawPath && !path) {
+      res.status(400).json({ errore: "Parametro path non valido" });
+      return;
+    }
+
+    if (!path && !(origin && destination)) {
+      res.status(400).json({ errore: "Servono path valido oppure origin+destination" });
+      return;
+    }
+
+    const staticMapUrl = new URL("https://maps.googleapis.com/maps/api/staticmap");
+    staticMapUrl.searchParams.set("size", `${width}x${height}`);
+    staticMapUrl.searchParams.set("scale", "2");
+    staticMapUrl.searchParams.set("maptype", "roadmap");
+
+    if (path) {
+      staticMapUrl.searchParams.append("path", `color:0x1F6FEB|weight:4|${path}`);
+    }
+
+    if (origin) {
+      staticMapUrl.searchParams.append("markers", `color:green|label:A|${origin}`);
+    }
+
+    if (destination) {
+      staticMapUrl.searchParams.append("markers", `color:red|label:B|${destination}`);
+    }
+
+    staticMapUrl.searchParams.set("key", key);
+
     const upstreamResponse = await fetchWithTimeout(staticMapUrl.toString(), 12000);
+    const status = upstreamResponse.status;
+    const contentType = upstreamResponse.headers.get("content-type") ?? "image/png";
     if (!upstreamResponse.ok) {
-      res.status(502).json({ error: `Google Static Maps HTTP ${upstreamResponse.status}` });
+      const text = await upstreamResponse.text();
+      const details = text.slice(0, 500);
+      console.error("[staticmap] HTTP", status, details);
+      res.status(502).json({ errore: "Google Static Maps error", status, details });
       return;
     }
 
     const body = Buffer.from(await upstreamResponse.arrayBuffer());
     if (body.length === 0) {
-      res.status(502).json({ error: "Risposta immagine vuota da Google Static Maps" });
+      console.error("[staticmap] empty body", { status, contentType });
+      res.status(502).json({
+        errore: "Google Static Maps error",
+        status,
+        details: "Risposta immagine vuota da Google Static Maps",
+      });
       return;
     }
 
-    const contentType = upstreamResponse.headers.get("content-type") ?? "image/png";
     res.setHeader("Content-Type", contentType);
     res.setHeader("Cache-Control", "public, max-age=86400, s-maxage=86400");
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.status(200).send(body);
-  } catch {
-    res.status(500).json({ error: "Errore generazione thumbnail Google" });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Errore generazione thumbnail Google";
+    const stack = error instanceof Error ? error.stack : undefined;
+    console.error("[thumbnail] unhandled", { message, stack });
+    res.status(500).json({
+      errore: "Errore generazione thumbnail Google",
+      details: message,
+    });
   }
 }
 
